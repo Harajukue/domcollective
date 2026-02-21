@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DōM - Breathe • Be • Collaborate</title>
+    <!-- Open Graph / Social Media Preview -->
+    <meta property="og:title" content="DōM - Breathe • Be • Collaborate">
+    <meta property="og:description" content="Find your perfect creative collaborator. Connect with talented creatives, showcase your work, and collaborate on your next project.">
+    <meta property="og:image" content="z.domlogov1.png">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="z.domlogov1.png">
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="z.domlogov1.png">
+    <link rel="apple-touch-icon" href="z.domlogov1.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <!-- Logo with Dropdown Menu (Desktop Only) -->
+            <div class="logo-dropdown-container">
+                <div class="logo" id="logoDropdownTrigger">
+                    <h1>D<img src="z.domlogov1.png" alt="ō" class="logo-o">M</h1>
+                    <p class="logo-subtitle-mobile">Breathe • Be • Collaborate</p>
+                    <span class="dropdown-arrow">▼</span>
+                </div>
+                <nav class="dropdown-nav" id="dropdownNav">
+                    <button class="dropdown-nav-btn active" data-section="home">Home</button>
+                    <button class="dropdown-nav-btn" id="checkInDropdownBtn" data-section="checkin" style="display: none;">Check In</button>
+                    <button class="dropdown-nav-btn" data-section="directory">Directory</button>
+                    <button class="dropdown-nav-btn" data-section="needs">Needs Board</button>
+                    <button class="dropdown-nav-btn" data-section="calendar">Events</button>
+                    <button class="dropdown-nav-btn" data-section="gallery">Gallery</button>
+                    <button class="dropdown-nav-btn" data-section="membership">Membership</button>
+                    <button class="dropdown-nav-btn" data-section="about">About</button>
+                    <button class="dropdown-nav-btn" id="profileDropdownBtn" data-section="profile" style="display: none;">My Profile</button>
+                    <button class="dropdown-auth-btn" id="authDropdownBtn">Login</button>
+                </nav>
+            </div>
+
+            <!-- Desktop Tagline Bar -->
+            <div class="tagline-bar">
+                <span class="tagline-item">Breathe</span>
+                <span class="tagline-separator">•</span>
+                <span class="tagline-item">Be</span>
+                <span class="tagline-separator">•</span>
+                <span class="tagline-item">Collaborate</span>
+            </div>
+
+            <!-- Mobile Navigation -->
+            <nav class="nav mobile-nav">
+                <button class="nav-btn active" data-section="home">Home</button>
+                <button class="nav-btn" id="checkInNavBtn" data-section="checkin" style="display: none;">Check In</button>
+                <button class="nav-btn" data-section="directory">Directory</button>
+                <button class="nav-btn" data-section="calendar">Events</button>
+                <button class="nav-btn" data-section="needs">Needs Board</button>
+                <button class="nav-btn" data-section="gallery">Gallery</button>
+                <button class="nav-btn" data-section="membership">Membership</button>
+                <button class="nav-btn" data-section="about">About</button>
+                <button class="nav-btn" id="profileNavBtn" data-section="profile" style="display: none;">My Profile</button>
+                <button class="auth-btn" id="authBtn">Login</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <!-- HOME SECTION -->
+        <section class="section active" id="home">
+            <div class="container">
+                <!-- Home Check-In Widget (shown on mobile when logged in) -->
+                <div class="home-checkin-widget" id="homeCheckinWidget">
+                    <div class="home-checkin-card">
+                        <span class="status-text" id="homeStatusText">You are OUT</span>
+                        <button class="circular-checkin-btn" id="homeToggleStatusBtn">
+                            <span class="btn-inner">
+                                <span class="btn-icon" id="homeToggleStatusIcon">○</span>
+                                <span class="btn-text" id="homeToggleStatusText">Check In</span>
+                            </span>
+                        </button>
+                        <p class="status-time" id="homeStatusTime"></p>
+                    </div>
+                </div>
+
+                <!-- Hero -->
+                <div class="hero">
+                    <h2>Find Your Perfect Creative Collaborator</h2>
+                    <p>Connect with talented creatives, showcase your work, and find the perfect collaborator for your next project.</p>
+
+                    <!-- Open/Closed Status Indicator -->
+                    <div class="space-status-indicator" id="spaceStatusIndicator">
+                        <div class="space-status-glow" id="spaceStatusGlow"></div>
+                        <span class="space-status-text" id="spaceStatusText">CLOSED</span>
+                    </div>
+
+                    <div class="hero-stats">
+                        <div class="stat">
+                            <span class="stat-number" id="memberCount">0</span>
+                            <span class="stat-label">Active Members</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-number" id="checkedInCount">0</span>
+                            <span class="stat-label">Checked In</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-number" id="needsCount">0</span>
+                            <span class="stat-label">Open Needs</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-number" id="eventsCount">0</span>
+                            <span class="stat-label">Upcoming Events</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Upcoming Events Preview -->
+                <div class="featured-section">
+                    <h3>Upcoming Events</h3>
+                    <div id="upcomingEvents"></div>
+                </div>
+
+                <!-- Latest Needs -->
+                <div class="featured-section">
+                    <h3>Latest Needs</h3>
+                    <div class="needs-preview" id="latestNeeds"></div>
+                </div>
+            </div>
+        </section>
+
+        <!-- CHECK-IN SECTION -->
+        <section class="section" id="checkin">
+            <div class="container">
+                <div class="section-header">
+                    <h2>DōM Space Check-In</h2>
+                </div>
+
+                <!-- User Check-In Card -->
+                <div class="checkin-container" id="userCheckinCard" style="display: none;">
+                    <div class="checkin-status-card">
+                        <h3>Your Status</h3>
+                        <div class="current-status-display">
+                            <div class="status-indicator-text" id="userStatusIndicator">
+                                <span class="status-text" id="userStatusText">Checking...</span>
+                            </div>
+                            <button class="circular-checkin-btn" id="toggleStatusBtn">
+                                <span class="btn-inner">
+                                    <span class="btn-icon" id="toggleStatusIcon">●</span>
+                                    <span class="btn-text" id="toggleStatusText">Check In</span>
+                                </span>
+                            </button>
+                            <p class="status-time" id="userStatusTime"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Admin Controls -->
+                <div class="admin-checkin-controls" id="adminCheckinControls" style="display: none;">
+                    <h3>Admin Controls - Who's in the Space</h3>
+
+                    <div class="checkin-stats">
+                        <div class="stat-card">
+                            <span class="stat-number" id="totalInSpace">0</span>
+                            <span class="stat-label">Currently In</span>
+                        </div>
+                        <div class="stat-card">
+                            <span class="stat-number" id="totalCheckedOut">0</span>
+                            <span class="stat-label">Checked Out</span>
+                        </div>
+                    </div>
+
+                    <div class="checkin-filters">
+                        <button class="filter-btn active" data-filter="all">All Members</button>
+                        <button class="filter-btn" data-filter="in">In Space</button>
+                        <button class="filter-btn" data-filter="out">Checked Out</button>
+                    </div>
+
+                    <div class="checkin-list" id="adminCheckinList"></div>
+
+                    <!-- Activity Log - Week Calendar -->
+                    <div class="activity-log">
+                        <div class="activity-log-header">
+                            <h3>Activity Log</h3>
+                            <div class="activity-log-nav">
+                                <button class="btn btn-outline btn-sm" id="activityPrevWeek">◀ PREV</button>
+                                <span class="activity-log-date" id="activityWeekLabel">Week of Jan 27</span>
+                                <button class="btn btn-outline btn-sm" id="activityNextWeek">NEXT ▶</button>
+                            </div>
+                        </div>
+                        <div class="activity-log-summary" id="activitySummary"></div>
+                        <div class="activity-week-grid" id="activityWeekGrid"></div>
+                    </div>
+                </div>
+
+                <!-- Access Denied Message -->
+                <div class="access-denied" id="checkinAccessDenied" style="display: none;">
+                    <h3>Verified Members Only</h3>
+                    <p>This feature is only available to verified members. Please contact an admin to get verified.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- DIRECTORY SECTION -->
+        <section class="section" id="directory">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Member Directory</h2>
+                    <div class="search-filters">
+                        <input type="text" id="memberSearch" placeholder="Search members...">
+                        <select id="skillFilter">
+                            <option value="">All Skills</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="member-grid" id="memberGrid"></div>
+            </div>
+        </section>
+
+        <!-- NEEDS BOARD SECTION -->
+        <section class="section" id="needs">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Needs Board</h2>
+                    <button class="btn btn-primary" id="postNeedBtn">Post a Need</button>
+                </div>
+                <div class="needs-grid" id="needsGrid"></div>
+            </div>
+        </section>
+
+        <!-- CALENDAR SECTION -->
+        <section class="section" id="calendar">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Community Events</h2>
+                    <button class="btn btn-primary" id="createEventBtn" style="display: none;">Create Event</button>
+                </div>
+
+                <!-- Upcoming Events Grid (Next 7 Days) -->
+                <div class="events-section">
+                    <h3>Upcoming Events (Next 7 Days)</h3>
+                    <div id="upcomingWeekEvents" class="events-grid"></div>
+                </div>
+
+                <!-- Google Calendar Embed -->
+                <div class="google-calendar-section">
+                    <h3>Community Calendar</h3>
+                    <iframe
+                        src="https://calendar.google.com/calendar/embed?src=d392dc35dbd1a2f8807f396fcc095f16fe662aaabce1ac6df94e2100aae3378c%40group.calendar.google.com&ctz=America%2FNew_York"
+                        style="border: 4px solid #000"
+                        width="100%"
+                        height="600"
+                        frameborder="0"
+                        scrolling="no">
+                    </iframe>
+                </div>
+            </div>
+        </section>
+
+        <!-- MEMBERSHIP SECTION -->
+        <section class="section" id="membership">
+            <div class="container">
+                <div class="membership-header">
+                    <h2>Membership Tiers</h2>
+                    <p class="membership-subtitle">Choose the level that fits your creative journey</p>
+                </div>
+
+                <!-- Current Membership Status (for logged in users) -->
+                <div id="currentMembershipStatus" class="current-membership-status" style="display: none;">
+                    <div class="status-card">
+                        <h3>Your Current Membership</h3>
+                        <div class="current-tier-display">
+                            <span class="tier-name" id="currentTierName">Creator</span>
+                            <span class="tier-status" id="currentTierStatus">Active</span>
+                        </div>
+                        <button class="btn btn-outline" id="manageMembershipBtn">Manage Subscription</button>
+                    </div>
+                </div>
+
+                <!-- Membership Tiers Grid -->
+                <div class="membership-tiers-grid">
+
+                    <!-- CREATOR TIER (internal: visitor) -->
+                    <div class="tier-card" data-tier="visitor">
+                        <div class="tier-header">
+                            <h3 class="tier-title">Creator</h3>
+                            <div class="tier-price">
+                                <span class="price-amount">$0</span>
+                                <span class="price-period">/month</span>
+                            </div>
+                        </div>
+
+                        <div class="tier-description">
+                            <p>DōMs doors are open to all people, we highly recommend creating a Creator account to gain access to certain DōM resources for free and to help to maintain DōM</p>
+                        </div>
+
+                        <div class="tier-features">
+                            <h4>What's Included:</h4>
+                            <ul>
+                                <li>Access to clubs and gatherings</li>
+                                <li>Access to DōM network and website</li>
+                                <li>Access to space within Open Hours</li>
+                            </ul>
+                        </div>
+
+                        <button class="btn btn-outline tier-select-btn" data-tier="visitor" data-price="0">
+                            Current Tier
+                        </button>
+                    </div>
+
+                    <!-- CONTRIBUTOR TIER (internal: member) -->
+                    <div class="tier-card tier-featured" data-tier="member">
+                        <div class="tier-badge">POPULAR</div>
+                        <div class="tier-header">
+                            <h3 class="tier-title">Contributor</h3>
+                            <div class="tier-price">
+                                <span class="price-amount">$10</span>
+                                <span class="price-period">/month</span>
+                            </div>
+                        </div>
+
+                        <div class="tier-description">
+                            <p>Wanting to be more active in DōM? Becoming a Contributor allows you greater access to DōM services, discounts on DōM related events, and a more established presence within the DōM community.</p>
+                        </div>
+
+                        <div class="tier-features">
+                            <h4>Everything in Creator, plus:</h4>
+                            <ul>
+                                <li>Active roles in clubs and gatherings</li>
+                                <li>Discounts/waived fees on tickets and planning events</li>
+                                <li>Limited access to DōM equipment</li>
+                                <li>Access to space outside of Open Hours (per resident approval)</li>
+                                <li>Showcase on website and base to promote projects</li>
+                                <li>Ability to post missions on mission board</li>
+                            </ul>
+                        </div>
+
+                        <button class="btn btn-primary tier-select-btn" data-tier="member" data-price="10">
+                            Select Contributor
+                        </button>
+                    </div>
+
+                    <!-- CATALIST TIER (internal: contributor) -->
+                    <div class="tier-card" data-tier="contributor">
+                        <div class="tier-header">
+                            <h3 class="tier-title">Catalist</h3>
+                            <div class="tier-price">
+                                <span class="price-amount">$35</span>
+                                <span class="price-period">/month</span>
+                            </div>
+                        </div>
+
+                        <div class="tier-description">
+                            <p>For those who are willing to catalize DōM, not just financially, but through services and projects, your voice will be recognized and heard as we help to build this community together. Becoming a Catalist gives you greater accessibility to the community and its resources with fewer hoops to jump through.</p>
+                        </div>
+
+                        <div class="tier-features">
+                            <h4>Everything in Contributor, plus:</h4>
+                            <ul>
+                                <li>Active voice within the collective/community</li>
+                                <li>Generous access to DōM equipment</li>
+                                <li>Door code + access to space outside of Open Hours (within reason)</li>
+                                <li>Ability to host events or clubs as DōM sponsored</li>
+                                <li>Showcase and space/ability to sell items through website to promote projects</li>
+                                <li>Priority mission board posting</li>
+                            </ul>
+                        </div>
+
+                        <button class="btn btn-primary tier-select-btn" data-tier="contributor" data-price="35">
+                            Select Catalist
+                        </button>
+                    </div>
+
+                </div>
+
+                <!-- FAQ Section -->
+                <div class="membership-faq">
+                    <h3>Frequently Asked Questions</h3>
+
+                    <div class="faq-item">
+                        <h4>Can I cancel anytime?</h4>
+                        <p>Yes! You can cancel your membership at any time. You'll continue to have access until the end of your billing period.</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Can I upgrade or downgrade my tier?</h4>
+                        <p>Absolutely! You can change your membership tier at any time. Upgrades take effect immediately, while downgrades take effect at the end of your current billing period.</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>What payment methods do you accept?</h4>
+                        <p>We accept all major credit cards through Stripe's secure payment processing.</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>Is there a trial period?</h4>
+                        <p>Start with a free Creator account to explore DōM. When you're ready to become more involved, upgrade to Contributor or Catalist!</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- GALLERY SECTION -->
+        <section class="section" id="gallery">
+            <div class="container">
+                <div class="section-header">
+                    <h2>Art Gallery</h2>
+                    <button class="btn btn-primary" id="addPaintingBtn" style="display: none;">Add Painting</button>
+                </div>
+
+                <!-- Gallery Grid -->
+                <div class="gallery-paintings-grid" id="galleryGrid">
+                    <p class="empty-state">Loading gallery...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- PROFILE SECTION -->
+        <section class="section" id="profile">
+            <div class="profile-container">
+                <form id="profileForm">
+                    <!-- LEFT COLUMN: Photo + Personal Info + Links -->
+                    <div class="profile-col profile-col-left">
+                        <!-- Top row: info left, photo right -->
+                        <div class="profile-top-row">
+                            <div class="profile-top-info">
+                                <div class="form-group">
+                                    <label for="profileName">Full Name</label>
+                                    <input type="text" id="profileName" required disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profileEmail">Email</label>
+                                    <input type="email" id="profileEmail" disabled>
+                                </div>
+                                <div class="form-group">
+                                    <label for="profilePhone">Phone</label>
+                                    <input type="tel" id="profilePhone" placeholder="Optional" disabled>
+                                </div>
+                            </div>
+                            <div class="profile-avatar-wrapper">
+                                <div class="profile-avatar-display" id="profileAvatarDisplay">
+                                    <div class="avatar-placeholder">Photo</div>
+                                </div>
+                                <div id="userStatusBanner" class="profile-tier-badge">
+                                    <span id="statusText">Loading status...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group profile-photos-group">
+                            <label>Profile Photos</label>
+                            <input type="file" id="profilePhotosInput" accept="image/*" multiple disabled style="padding: 1rem; border: 3px solid #000; background: #fff; font-weight: 700; cursor: pointer; width: 100%;">
+                            <input type="url" id="profileAvatar" style="display: none;">
+                            <p id="avatarUploadStatus" style="font-size: 0.9rem; margin-top: 0.5rem; font-weight: 700;"></p>
+                            <div id="profilePhotosGrid" class="profile-photos-grid"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profileSkills">Tags</label>
+                            <input type="text" id="profileSkills" placeholder="e.g., Web Design, Photography, Writing" disabled>
+                            <div class="skills-suggestions">
+                                <span class="skill-tag" data-skill="Web Design">Web Design</span>
+                                <span class="skill-tag" data-skill="Graphic Design">Graphic Design</span>
+                                <span class="skill-tag" data-skill="Photography">Photography</span>
+                                <span class="skill-tag" data-skill="Writing">Writing</span>
+                                <span class="skill-tag" data-skill="Video Production">Video Production</span>
+                                <span class="skill-tag" data-skill="Music Production">Music Production</span>
+                                <span class="skill-tag" data-skill="Illustration">Illustration</span>
+                                <span class="skill-tag" data-skill="Marketing">Marketing</span>
+                                <span class="skill-tag" data-skill="3D Modeling">3D Modeling</span>
+                                <span class="skill-tag" data-skill="Animation">Animation</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profileBio">Bio</label>
+                            <textarea id="profileBio" rows="4" placeholder="Tell us about yourself and your creative work..." disabled></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profilePortfolio">Portfolio Website</label>
+                            <input type="url" id="profilePortfolio" placeholder="Optional" disabled>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profileInstagram">Instagram</label>
+                            <input type="text" id="profileInstagram" placeholder="Optional" disabled>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profileLinkedin">LinkedIn</label>
+                            <input type="text" id="profileLinkedin" placeholder="Optional" disabled>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profileWebsite">Personal Website</label>
+                            <input type="url" id="profileWebsite" placeholder="Optional" disabled>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profileSocial">Other Social</label>
+                            <input type="text" id="profileSocial" placeholder="Optional" disabled>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="profileContact">Contact Info</label>
+                            <input type="text" id="profileContact" placeholder="Preferred contact method" disabled>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT COLUMN: Portfolio Projects -->
+                    <div class="profile-col profile-col-right">
+                        <div class="profile-portfolio-header">
+                            <h3>Portfolio</h3>
+                            <button type="button" class="btn btn-outline" id="addProjectBtn" disabled>Add Project +</button>
+                        </div>
+
+                        <div id="portfolioProjects">
+                            <p class="empty-state">Add projects to showcase your work</p>
+                        </div>
+                    </div>
+
+                    <!-- BOTTOM: Edit / Save Button -->
+                    <div class="profile-actions-bar">
+                        <button type="button" class="btn btn-primary" id="profileEditBtn">Edit Profile</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ABOUT SECTION -->
+        <section class="section" id="about">
+            <div class="container">
+                <div class="about-hero">
+                    <h2>About DōM</h2>
+                    <p class="about-tagline">A collective space for creatives to breathe, be, and collaborate.</p>
+                </div>
+
+                <div class="about-mission">
+                    <p>DōM is a community-driven creative collective built on the belief that collaboration fuels innovation. We provide a space — both physical and digital — where artists, designers, musicians, writers, and makers of all kinds can connect, share resources, and bring ideas to life together.</p>
+                </div>
+
+                <!-- Credits -->
+                <div class="about-credits">
+                    <h3>Credits</h3>
+                    <div class="credits-grid">
+                        <div class="credit-card">
+                            <div class="credit-role">Founder & Catalist</div>
+                            <div class="credit-name">Daniel Michel</div>
+                        </div>
+                        <div class="credit-card">
+                            <div class="credit-role">Website Development</div>
+                            <div class="credit-name">Ethan Fountain</div>
+                            <div class="credit-contact">ethanfountain03@gmail.com</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feedback -->
+                <div class="about-feedback">
+                    <h3>Share Your Feedback</h3>
+                    <p class="feedback-subtitle">Help us make DōM better. Your feedback is anonymous unless you choose to include your name.</p>
+                    <form id="feedbackForm">
+                        <div class="form-group">
+                            <label for="feedbackName">Name (Optional)</label>
+                            <input type="text" id="feedbackName" placeholder="Anonymous">
+                        </div>
+                        <div class="form-group">
+                            <label for="feedbackType">Feedback Type</label>
+                            <select id="feedbackType">
+                                <option value="general">General Feedback</option>
+                                <option value="suggestion">Suggestion</option>
+                                <option value="bug">Bug Report</option>
+                                <option value="praise">Praise</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="feedbackMessage">Message *</label>
+                            <textarea id="feedbackMessage" rows="5" required placeholder="Tell us what's on your mind..."></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Submit Feedback</button>
+                    </form>
+                </div>
+
+                <!-- Admin: View Feedback -->
+                <div class="about-feedback-admin" id="feedbackAdminSection" style="display: none;">
+                    <h3>User Feedback</h3>
+                    <div id="feedbackList" class="feedback-list"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- MODALS -->
+
+    <!-- Auth Modal -->
+    <div class="modal" id="authModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3 id="authModalTitle">Login</h3>
+            <form id="authForm">
+                <div class="form-group">
+                    <label for="authEmail">Email</label>
+                    <input type="email" id="authEmail" required>
+                </div>
+                <div class="form-group" id="authPasswordGroup">
+                    <label for="authPassword">Password</label>
+                    <input type="password" id="authPassword" required>
+                </div>
+                <div class="form-group" id="authNameGroup" style="display: none;">
+                    <label for="authName">Full Name</label>
+                    <input type="text" id="authName">
+                </div>
+                <button type="submit" class="btn btn-primary" id="authSubmit">Login</button>
+
+                <div style="text-align: center; margin: 1.5rem 0; position: relative;">
+                    <span style="background: #fff; padding: 0 1rem; position: relative; z-index: 1;">OR</span>
+                    <hr style="border: 2px solid #000; margin-top: -1.2rem;">
+                </div>
+
+                <button type="button" class="btn btn-outline" id="googleSignInBtn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
+                    <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg">
+                        <g fill="none" fill-rule="evenodd">
+                            <path d="M17.6 9.2l-.1-1.8H9v3.4h4.8C13.6 12 13 13 12 13.6v2.2h3a8.8 8.8 0 0 0 2.6-6.6z" fill="#4285F4" fill-rule="nonzero"/>
+                            <path d="M9 18c2.4 0 4.5-.8 6-2.2l-3-2.2a5.4 5.4 0 0 1-8-2.9H1V13a9 9 0 0 0 8 5z" fill="#34A853" fill-rule="nonzero"/>
+                            <path d="M4 10.7a5.4 5.4 0 0 1 0-3.4V5H1a9 9 0 0 0 0 8l3-2.3z" fill="#FBBC05" fill-rule="nonzero"/>
+                            <path d="M9 3.6c1.3 0 2.5.4 3.4 1.3L15 2.3A9 9 0 0 0 1 5l3 2.4a5.4 5.4 0 0 1 5-3.7z" fill="#EA4335" fill-rule="nonzero"/>
+                        </g>
+                    </svg>
+                    Sign in with Google
+                </button>
+                <p class="auth-redirect-notice">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -1px;">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    You'll be securely redirected to Google's sign-in page. Authentication is handled by <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a>, our trusted infrastructure provider.
+                </p>
+
+                <p class="auth-toggle">
+                    <span id="authToggleText">Don't have an account?</span>
+                    <a href="#" id="authToggleLink">Sign up</a>
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Onboarding Modal -->
+    <div class="modal" id="onboardingModal">
+        <div class="modal-content onboarding-content">
+            <h3>Welcome to DōM!</h3>
+            <p class="onboarding-intro">Let's set up your profile so other members can discover your talents.</p>
+
+            <form id="onboardingForm">
+                <!-- Step 1: Basic Info -->
+                <div class="onboarding-step active" data-step="1">
+                    <h4>Step 1: Basic Information</h4>
+                    <div class="form-group">
+                        <label for="onboardName">Full Name *</label>
+                        <input type="text" id="onboardName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="onboardBio">Tell us about yourself *</label>
+                        <textarea id="onboardBio" rows="4" required placeholder="What do you create? What are you passionate about?"></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="app.nextOnboardingStep()">Next</button>
+                </div>
+
+                <!-- Step 2: Skills -->
+                <div class="onboarding-step" data-step="2">
+                    <h4>Step 2: Your Skills</h4>
+                    <div class="form-group">
+                        <label for="onboardSkills">Select your skills</label>
+                        <div class="skills-grid">
+                            <label class="skill-checkbox"><input type="checkbox" value="Web Design"> Web Design</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Graphic Design"> Graphic Design</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Photography"> Photography</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Writing"> Writing</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Video Production"> Video Production</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Music Production"> Music Production</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Illustration"> Illustration</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Marketing"> Marketing</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="3D Modeling"> 3D Modeling</label>
+                            <label class="skill-checkbox"><input type="checkbox" value="Animation"> Animation</label>
+                        </div>
+                        <input type="text" id="onboardOtherSkills" placeholder="Other skills (comma-separated)">
+                    </div>
+                    <div class="onboarding-nav">
+                        <button type="button" class="btn btn-outline" onclick="app.prevOnboardingStep()">Back</button>
+                        <button type="button" class="btn btn-primary" onclick="app.nextOnboardingStep()">Next</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Your Work -->
+                <div class="onboarding-step" data-step="3">
+                    <h4>Step 3: Your Work (Optional)</h4>
+<p style="margin-bottom: 1.5rem; font-size: 0.9rem;">Add links to showcase your work - you can skip this and add them later!</p>
+                    <div class="form-group">
+                        <label for="onboardPortfolio">Portfolio URL</label>
+                        <input type="url" id="onboardPortfolio" placeholder="https://yourportfolio.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="onboardWebsite">Personal Website</label>
+                        <input type="url" id="onboardWebsite" placeholder="https://yourwebsite.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="onboardSocial">Social Media</label>
+                        <input type="text" id="onboardSocial" placeholder="@username or profile link">
+                    </div>
+                    <div class="onboarding-nav">
+                        <button type="button" class="btn btn-outline" onclick="app.prevOnboardingStep()">Back</button>
+                        <button type="submit" class="btn btn-primary">Complete Profile</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Need Modal -->
+    <div class="modal" id="needModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Post a Need</h3>
+            <form id="needForm">
+                <div class="form-group">
+                    <label for="needTitle">Title *</label>
+                    <input type="text" id="needTitle" required placeholder="What do you need help with?">
+                </div>
+                <div class="form-group">
+                    <label for="needDescription">Description *</label>
+                    <textarea id="needDescription" rows="4" required placeholder="Describe your project and requirements..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="needSkills">Required Skills (comma-separated)</label>
+                    <input type="text" id="needSkills" placeholder="e.g., Web Design, Photography">
+                </div>
+                <div class="form-group">
+                    <label for="needBudget">Budget Range</label>
+                    <select id="needBudget">
+                        <option value="">Select budget range</option>
+                        <option value="Under $500">Under $500</option>
+                        <option value="$500 - $1,500">$500 - $1,500</option>
+                        <option value="$1,500 - $5,000">$1,500 - $5,000</option>
+                        <option value="$5,000+">$5,000+</option>
+                        <option value="Collaboration/Trade">Collaboration/Trade</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="needDeadline">Deadline (Optional)</label>
+                    <input type="date" id="needDeadline">
+                </div>
+                <button type="submit" class="btn btn-primary">Post Need</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Event Modal -->
+    <div class="modal" id="eventModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Create Event</h3>
+            <form id="eventForm">
+                <div class="form-group">
+                    <label for="eventTitle">Event Title *</label>
+                    <input type="text" id="eventTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="eventDescription">Description</label>
+                    <textarea id="eventDescription" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="eventDate">Date *</label>
+                    <input type="date" id="eventDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="eventTime">Time</label>
+                    <input type="time" id="eventTime">
+                </div>
+                <div class="form-group">
+                    <label for="eventLocation">Location</label>
+                    <input type="text" id="eventLocation" placeholder="Online or physical address">
+                </div>
+                <div class="form-group">
+                    <label for="eventType">Event Type</label>
+                    <select id="eventType">
+                        <option value="Workshop">Workshop</option>
+                        <option value="Meetup">Meetup</option>
+                        <option value="Exhibition">Exhibition</option>
+                        <option value="Networking">Networking</option>
+                        <option value="Collaboration">Collaboration Session</option>
+                        <option value="Other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="addToGoogleCalendar" checked style="width: auto;">
+                        <span>Also add to Google Calendar</span>
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-primary">Create Event</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Project Modal -->
+    <div class="modal" id="projectModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Add Portfolio Project</h3>
+            <form id="projectForm">
+                <div class="form-group">
+                    <label for="projectTitle">Project Title *</label>
+                    <input type="text" id="projectTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="projectDescription">Description</label>
+                    <textarea id="projectDescription" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="projectImageFile">Project Image</label>
+                    <input type="file" id="projectImageFile" accept="image/*" style="padding: 1rem; border: 3px solid #000; background: #fff; font-weight: 700; cursor: pointer; width: 100%;">
+                    <input type="hidden" id="projectImage">
+                    <div id="projectImagePreview" class="image-preview" style="margin-top: 1rem;"></div>
+                    <p id="projectImageUploadStatus" style="font-size: 0.9rem; margin-top: 0.5rem; font-weight: 700;"></p>
+                </div>
+                <div class="form-group">
+                    <label for="projectLink">Project Link</label>
+                    <input type="text" id="projectLink" placeholder="https://example.com/project">
+                </div>
+                <button type="submit" class="btn btn-primary">Add Project</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Member Modal -->
+    <div class="modal" id="memberModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <div id="memberModalContent"></div>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div class="modal" id="contactModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Send Message</h3>
+            <form id="contactForm">
+                <div class="form-group">
+                    <label for="messageSubject">Subject</label>
+                    <input type="text" id="messageSubject" required>
+                </div>
+                <div class="form-group">
+                    <label for="messageContent">Message</label>
+                    <textarea id="messageContent" rows="6" required placeholder="Write your message..."></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Send Message</button>
+            </form>
+        </div>
+    </div>
+    <!-- Gallery Viewer Modal -->
+    <div class="modal" id="galleryModal">
+        <div class="modal-content" style="max-width: 90%; max-height: 90vh; padding: 1rem;">
+            <span class="close">&times;</span>
+            <div id="galleryViewer" style="display: flex; flex-direction: column; height: 100%;">
+                <img id="galleryImage" src="" alt="Gallery" style="max-width: 100%; max-height: 70vh; object-fit: contain; border: 3px solid #000; margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <button class="btn btn-outline" onclick="app.prevGalleryImage()">Previous</button>
+                    <span id="galleryCounter" style="font-weight: 900;">1 / 1</span>
+                    <button class="btn btn-outline" onclick="app.nextGalleryImage()">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Painting Modal -->
+    <div class="modal" id="paintingModal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3 id="paintingModalTitle">Add Painting</h3>
+            <form id="paintingForm">
+                <div class="form-group">
+                    <label for="paintingTitle">Title *</label>
+                    <input type="text" id="paintingTitle" required>
+                </div>
+                <div class="form-group">
+                    <label for="paintingArtist">Artist Name *</label>
+                    <input type="text" id="paintingArtist" required>
+                </div>
+                <div class="form-group">
+                    <label for="paintingCredit">Artist Credit/Bio</label>
+                    <textarea id="paintingCredit" rows="3" placeholder="Optional artist information or credit line"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="paintingDescription">Description</label>
+                    <textarea id="paintingDescription" rows="4" placeholder="Describe the artwork..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="paintingPrice">Price (USD) *</label>
+                    <input type="number" id="paintingPrice" min="0" step="0.01" required placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label for="paintingImageFile">Painting Image * (Choose from gallery or take photo)</label>
+                    <input type="file" id="paintingImageFile" accept="image/*" required style="padding: 1rem; border: 3px solid #000; background: #fff; font-weight: 700; cursor: pointer; width: 100%;">
+                    <input type="hidden" id="paintingImage">
+                    <div id="paintingImagePreview" class="image-preview" style="margin-top: 1rem;"></div>
+                    <p id="paintingImageUploadStatus" style="font-size: 0.9rem; margin-top: 0.5rem; font-weight: 700;"></p>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Painting</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Painting Detail Modal -->
+    <div class="modal painting-detail-modal" id="paintingDetailModal">
+        <div class="modal-content">
+            <div class="painting-detail-layout">
+                <div class="painting-detail-image">
+                    <button class="painting-detail-close" onclick="app.closePaintingDetail()">&times;</button>
+                    <img id="paintingDetailImage" src="" alt="">
+                    <div id="paintingDetailSoldOverlay" class="painting-sold-overlay" style="display:none;">SOLD</div>
+                </div>
+                <div class="painting-detail-info">
+                    <div>
+                        <h3 class="painting-title" id="paintingDetailTitle"></h3>
+                        <p class="painting-artist" id="paintingDetailArtist"></p>
+                    </div>
+                    <p class="painting-description" id="paintingDetailDescription"></p>
+                    <div class="painting-credit" id="paintingDetailCredit" style="display:none;"></div>
+                    <div class="painting-price" id="paintingDetailPrice"></div>
+                    <div class="painting-detail-actions" id="paintingDetailActions"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <!-- DIAGNOSTIC: Intercept fetch to catch Supabase AbortErrors — REMOVE after debugging -->
+    <script>
+    (function() {
+        const _origFetch = window.fetch;
+        let reqId = 0;
+        window.fetch = function(url, opts) {
+            const id = ++reqId;
+            const urlStr = (typeof url === 'string') ? url : (url?.url || String(url));
+            const isSupabase = urlStr.includes('supabase');
+            if (isSupabase) {
+                console.log(`[FETCH #${id}] START ${opts?.method || 'GET'} ${urlStr.substring(0, 120)}`);
+                if (opts?.signal) console.log(`[FETCH #${id}] Has AbortSignal, aborted=${opts.signal.aborted}`);
+            }
+            return _origFetch.apply(this, arguments).then(
+                resp => {
+                    if (isSupabase) console.log(`[FETCH #${id}] OK ${resp.status} ${urlStr.substring(0, 80)}`);
+                    return resp;
+                },
+                err => {
+                    if (isSupabase) {
+                        console.error(`[FETCH #${id}] FAILED: ${err.name}: ${err.message}`);
+                        console.error(`[FETCH #${id}] URL: ${urlStr}`);
+                        if (opts?.signal) console.error(`[FETCH #${id}] Signal aborted=${opts.signal.aborted}, reason=${opts.signal.reason}`);
+                    }
+                    throw err;
+                }
+            );
+        };
+        // Dump all supabase-related localStorage keys
+        console.log('=== SUPABASE LOCALSTORAGE DUMP ===');
+        for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i);
+            if (k.includes('supabase') || k.includes('sb-') || k.includes('dom-collective')) {
+                const v = localStorage.getItem(k);
+                console.log(`  ${k}: ${v ? v.substring(0, 100) + (v.length > 100 ? '...' : '') : 'EMPTY'}`);
+            }
+        }
+        console.log('=== END DUMP ===');
+    })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8"></script>
+    <script src="https://js.stripe.com/v3/"></script>
+    <script src="https://www.paypal.com/sdk/js?client-id=Abz5_fSTKVE07Lh1f8-Hcduc3VYG15t_bu786-7RM27vCCoQUsoLBcn5evz3lPrdK7JtIT3XVeVRh93g&currency=USD"></script>
+    <script src="script.js"></script>
+
+    <!--
+    ========================================
+    DEBUG CONSOLE - DISABLED BY DEFAULT
+    ========================================
+    To enable for troubleshooting:
+    1. Change display:none to display:block in the div below
+    2. Uncomment the script section
+    3. Refresh the page
+    ========================================
+    -->
+    <div id="mobileDebug" style="position:fixed;bottom:0;left:0;right:0;height:150px;background:#000;color:#0f0;font-family:monospace;font-size:10px;overflow-y:auto;z-index:999;padding:8px;display:none;border-top:3px solid #0f0;user-select:text;-webkit-user-select:text;-moz-user-select:text;-ms-user-select:text;"></div>
+    <!--
+    <script>
+    (function(){
+        var log = document.getElementById('mobileDebug');
+        var origLog = console.log;
+        var origError = console.error;
+        var origWarn = console.warn;
+
+        function addToLog(prefix, args, color) {
+            var timestamp = new Date().toLocaleTimeString();
+            var message = Array.from(args).map(a => {
+                if (typeof a === 'object') {
+                    try {
+                        return JSON.stringify(a, null, 2);
+                    } catch(e) {
+                        return String(a);
+                    }
+                }
+                return String(a);
+            }).join(' ');
+            log.innerHTML += '<span style="color:' + color + '">[' + timestamp + '] ' + prefix + ': ' + message + '</span><br>';
+            log.scrollTop = log.scrollHeight;
+        }
+
+        console.log = function(){
+            addToLog('LOG', arguments, '#0f0');
+            origLog.apply(console, arguments);
+        };
+
+        console.error = function(){
+            addToLog('ERROR', arguments, '#f00');
+            origError.apply(console, arguments);
+        };
+
+        console.warn = function(){
+            addToLog('WARN', arguments, '#ff0');
+            origWarn.apply(console, arguments);
+        };
+
+        console.log('DEBUG CONSOLE ACTIVE');
+    })();
+    </script>
+    -->
+</html>
