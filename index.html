@@ -15,6 +15,8 @@
     <link rel="icon" type="image/png" href="z.domlogov1.png">
     <link rel="apple-touch-icon" href="z.domlogov1.png">
     <link rel="stylesheet" href="styles.css">
+    <!-- EmailJS for admin space-request notifications -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 </head>
 <body>
     <!-- Header -->
@@ -30,13 +32,16 @@
                 <nav class="dropdown-nav" id="dropdownNav">
                     <button class="dropdown-nav-btn active" data-section="home">Home</button>
                     <button class="dropdown-nav-btn" id="checkInDropdownBtn" data-section="checkin" style="display: none;">Check In</button>
-                    <button class="dropdown-nav-btn" data-section="directory">Directory</button>
                     <button class="dropdown-nav-btn" data-section="needs">Needs Board</button>
                     <button class="dropdown-nav-btn" data-section="calendar">Events</button>
+                    <button class="dropdown-nav-btn" data-section="directory">Directory</button>
                     <button class="dropdown-nav-btn" data-section="gallery">Gallery</button>
                     <button class="dropdown-nav-btn" data-section="membership">Membership</button>
+                    <button class="dropdown-nav-btn" data-section="donate">Donate</button>
+                    <button class="dropdown-nav-btn" id="bookSpaceDropdownBtn" data-section="bookspace" style="display: none;">Book the Space</button>
                     <button class="dropdown-nav-btn" data-section="about">About</button>
                     <button class="dropdown-nav-btn" id="profileDropdownBtn" data-section="profile" style="display: none;">My Profile</button>
+                    <button class="dropdown-nav-btn" id="adminDropdownBtn" data-section="admin" style="display: none;">⚙ Admin</button>
                     <button class="dropdown-auth-btn" id="authDropdownBtn">Login</button>
                 </nav>
             </div>
@@ -50,20 +55,26 @@
                 <span class="tagline-item">Collaborate</span>
             </div>
 
-            <!-- Mobile Navigation -->
-            <nav class="nav mobile-nav">
-                <button class="nav-btn active" data-section="home">Home</button>
-                <button class="nav-btn" id="checkInNavBtn" data-section="checkin" style="display: none;">Check In</button>
-                <button class="nav-btn" data-section="directory">Directory</button>
-                <button class="nav-btn" data-section="calendar">Events</button>
-                <button class="nav-btn" data-section="needs">Needs Board</button>
-                <button class="nav-btn" data-section="gallery">Gallery</button>
-                <button class="nav-btn" data-section="membership">Membership</button>
-                <button class="nav-btn" data-section="about">About</button>
-                <button class="nav-btn" id="profileNavBtn" data-section="profile" style="display: none;">My Profile</button>
-                <button class="auth-btn" id="authBtn">Login</button>
-            </nav>
+            <!-- Mobile Hamburger Toggle -->
+            <button class="hamburger-btn" id="hamburgerBtn" aria-label="Toggle menu">&#9776;</button>
         </div>
+
+        <!-- Mobile Navigation Dropdown (outside container for full-width) -->
+        <nav class="nav mobile-nav" id="mobileNav">
+            <button class="nav-btn active" data-section="home">Home</button>
+            <button class="nav-btn" id="checkInNavBtn" data-section="checkin" style="display: none;">Check In</button>
+            <button class="nav-btn" data-section="needs">Needs Board</button>
+            <button class="nav-btn" data-section="calendar">Events</button>
+            <button class="nav-btn" data-section="directory">Directory</button>
+            <button class="nav-btn" data-section="gallery">Gallery</button>
+            <button class="nav-btn" data-section="membership">Membership</button>
+            <button class="nav-btn" data-section="donate">Donate</button>
+            <button class="nav-btn" id="bookSpaceNavBtn" data-section="bookspace" style="display: none;">Book the Space</button>
+            <button class="nav-btn" data-section="about">About</button>
+            <button class="nav-btn" id="profileNavBtn" data-section="profile" style="display: none;">My Profile</button>
+            <button class="nav-btn" id="adminNavBtn" data-section="admin" style="display: none;">⚙ Admin</button>
+            <button class="auth-btn" id="authBtn">Login</button>
+        </nav>
     </header>
 
     <!-- Main Content -->
@@ -94,6 +105,9 @@
                     <div class="space-status-indicator" id="spaceStatusIndicator">
                         <div class="space-status-glow" id="spaceStatusGlow"></div>
                         <span class="space-status-text" id="spaceStatusText">CLOSED</span>
+                    </div>
+                    <div id="adminSpaceToggleArea" style="display:none;">
+                        <button id="adminToggleSpaceBtn" onclick="app.toggleSpaceStatus()">Set Space Open</button>
                     </div>
 
                     <div class="hero-stats">
@@ -196,8 +210,8 @@
 
                 <!-- Access Denied Message -->
                 <div class="access-denied" id="checkinAccessDenied" style="display: none;">
-                    <h3>Verified Members Only</h3>
-                    <p>This feature is only available to verified members. Please contact an admin to get verified.</p>
+                    <h3>Members Only</h3>
+                    <p>Please sign in to check in or out of the space.</p>
                 </div>
             </div>
         </section>
@@ -240,7 +254,15 @@
                 <!-- Upcoming Events Grid (Next 7 Days) -->
                 <div class="events-section">
                     <h3>Upcoming Events (Next 7 Days)</h3>
-                    <div id="upcomingWeekEvents" class="events-grid"></div>
+                    <div id="upcomingWeekEvents"></div>
+                </div>
+
+                <!-- Admin: RSVP Overview -->
+                <div id="adminRsvpSection" style="display:none;">
+                    <div class="section-header" style="margin-top: 2rem;">
+                        <h3>Event RSVPs</h3>
+                    </div>
+                    <div id="adminRsvpPanel"></div>
                 </div>
 
                 <!-- Google Calendar Embed -->
@@ -281,10 +303,10 @@
                 <!-- Membership Tiers Grid -->
                 <div class="membership-tiers-grid">
 
-                    <!-- CREATOR TIER (internal: visitor) -->
+                    <!-- COMMUNITY TIER (internal: visitor) -->
                     <div class="tier-card" data-tier="visitor">
                         <div class="tier-header">
-                            <h3 class="tier-title">Creator</h3>
+                            <h3 class="tier-title">Community</h3>
                             <div class="tier-price">
                                 <span class="price-amount">$0</span>
                                 <span class="price-period">/month</span>
@@ -292,15 +314,18 @@
                         </div>
 
                         <div class="tier-description">
-                            <p>DōMs doors are open to all people, we highly recommend creating a Creator account to gain access to certain DōM resources for free and to help to maintain DōM</p>
+                            <p>DōM's doors are open to all. Create a free account to participate in the collective, attend events, and access the community network.</p>
                         </div>
 
                         <div class="tier-features">
                             <h4>What's Included:</h4>
                             <ul>
-                                <li>Access to clubs and gatherings</li>
-                                <li>Access to DōM network and website</li>
-                                <li>Access to space within Open Hours</li>
+                                <li>Account required to access anything</li>
+                                <li>Check-in required every visit</li>
+                                <li>Access during open hours only (9am–4pm)</li>
+                                <li>Can be let in by a Creator member outside open hours</li>
+                                <li>Access to clubs and gatherings as participant</li>
+                                <li>Directory listing, needs board visibility, community events</li>
                             </ul>
                         </div>
 
@@ -309,42 +334,42 @@
                         </button>
                     </div>
 
-                    <!-- CONTRIBUTOR TIER (internal: member) -->
+                    <!-- CREATOR TIER (internal: member) -->
                     <div class="tier-card tier-featured" data-tier="member">
-                        <div class="tier-badge">POPULAR</div>
+                        <div class="tier-badge">Most Popular</div>
                         <div class="tier-header">
-                            <h3 class="tier-title">Contributor</h3>
+                            <h3 class="tier-title">Creator</h3>
                             <div class="tier-price">
-                                <span class="price-amount">$10</span>
+                                <span class="price-amount">$20</span>
                                 <span class="price-period">/month</span>
                             </div>
                         </div>
 
                         <div class="tier-description">
-                            <p>Wanting to be more active in DōM? Becoming a Contributor allows you greater access to DōM services, discounts on DōM related events, and a more established presence within the DōM community.</p>
+                            <p>Ready to create? Get independent access, event discounts, a presence in the DōM community, and the ability to post to the needs board.</p>
                         </div>
 
                         <div class="tier-features">
-                            <h4>Everything in Creator, plus:</h4>
+                            <h4>Everything in Community, plus:</h4>
                             <ul>
-                                <li>Active roles in clubs and gatherings</li>
-                                <li>Discounts/waived fees on tickets and planning events</li>
-                                <li>Limited access to DōM equipment</li>
-                                <li>Access to space outside of Open Hours (per resident approval)</li>
-                                <li>Showcase on website and base to promote projects</li>
-                                <li>Ability to post missions on mission board</li>
+                                <li>Door access during open hours independently</li>
+                                <li>Event discounts / waived fees as attendee</li>
+                                <li>Active role in clubs (not just participant)</li>
+                                <li>Showcase on website</li>
+                                <li>Ability to post to needs board</li>
+                                <li>Priority studio booking when studio goes live</li>
                             </ul>
                         </div>
 
-                        <button class="btn btn-primary tier-select-btn" data-tier="member" data-price="10">
-                            Select Contributor
+                        <button class="btn btn-primary tier-select-btn" data-tier="member" data-price="20">
+                            Select Creator
                         </button>
                     </div>
 
-                    <!-- CATALIST TIER (internal: contributor) -->
+                    <!-- COLLABORATOR TIER (internal: contributor) -->
                     <div class="tier-card" data-tier="contributor">
                         <div class="tier-header">
-                            <h3 class="tier-title">Catalist</h3>
+                            <h3 class="tier-title">Collaborator</h3>
                             <div class="tier-price">
                                 <span class="price-amount">$35</span>
                                 <span class="price-period">/month</span>
@@ -352,26 +377,55 @@
                         </div>
 
                         <div class="tier-description">
-                            <p>For those who are willing to catalize DōM, not just financially, but through services and projects, your voice will be recognized and heard as we help to build this community together. Becoming a Catalist gives you greater accessibility to the community and its resources with fewer hoops to jump through.</p>
+                            <p>For those ready to shape DōM. Get a door code, host events, access the full studio when live, and sell your work through the website.</p>
                         </div>
 
                         <div class="tier-features">
-                            <h4>Everything in Contributor, plus:</h4>
+                            <h4>Everything in Creator, plus:</h4>
                             <ul>
-                                <li>Active voice within the collective/community</li>
-                                <li>Generous access to DōM equipment</li>
-                                <li>Door code + access to space outside of Open Hours (within reason)</li>
-                                <li>Ability to host events or clubs as DōM sponsored</li>
-                                <li>Showcase and space/ability to sell items through website to promote projects</li>
-                                <li>Priority mission board posting</li>
+                                <li>Door code — access outside open hours</li>
+                                <li>Can host and organize DōM events</li>
+                                <li>Full studio access (photo + music) when live</li>
+                                <li>Sell work through website</li>
+                                <li>Priority event scheduling</li>
+                                <li>Must still go through Catalist for event approval</li>
                             </ul>
                         </div>
 
                         <button class="btn btn-primary tier-select-btn" data-tier="contributor" data-price="35">
-                            Select Catalist
+                            Select Collaborator
                         </button>
                     </div>
 
+                </div>
+
+                <!-- Contributor Donation Section -->
+                <div class="tier-contributor-section">
+                    <div class="tier-contributor-card">
+                        <div class="tier-contributor-inner">
+                            <div class="tier-contributor-info">
+                                <div class="tier-contributor-header">
+                                    <h3 class="tier-title">Contributor</h3>
+                                    <div class="tier-price">
+                                        <span class="price-amount">$50+</span>
+                                        <span class="price-period">/ your call</span>
+                                    </div>
+                                </div>
+                                <p>Want to give back more? Contributor is a donation tier for members who want to go above and beyond in supporting DōM. Same access as Collaborator — every dollar goes directly to keeping the space alive and growing.</p>
+                            </div>
+                            <div class="tier-contributor-features">
+                                <h4>Everything in Collaborator, plus:</h4>
+                                <ul>
+                                    <li>The satisfaction of sustaining a creative community</li>
+                                    <li>Pay whatever feels right — $50 minimum, no ceiling</li>
+                                    <li>For those who want to invest in the community, not just access it</li>
+                                </ul>
+                                <button class="btn btn-primary" onclick="app.showSection('donate')">
+                                    Contribute Now
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- FAQ Section -->
@@ -395,7 +449,12 @@
 
                     <div class="faq-item">
                         <h4>Is there a trial period?</h4>
-                        <p>Start with a free Creator account to explore DōM. When you're ready to become more involved, upgrade to Contributor or Catalist!</p>
+                        <p>Start with a free Community account to explore DōM. When you're ready to get more involved, upgrade to Creator or Collaborator!</p>
+                    </div>
+
+                    <div class="faq-item">
+                        <h4>What is Catalist?</h4>
+                        <p>Catalist is an internal role for DōM board members and staff. It's not a purchasable tier — Catalists are the people who approve access, greenlight events, and keep the collective running.</p>
                     </div>
                 </div>
             </div>
@@ -528,6 +587,293 @@
             </div>
         </section>
 
+        <!-- BOOK THE SPACE SECTION -->
+        <section class="section" id="bookspace">
+            <div class="container">
+
+                <!-- Hero Banner -->
+                <div class="bookspace-hero">
+                    <h2>Book the DōM Space</h2>
+                    <p>Requesting access to the space for a shoot, session, gathering, or something else entirely? Fill out the form below and we'll be in touch.</p>
+                </div>
+
+                <!-- User Form -->
+                <div id="bookSpaceForm" style="display: none;">
+                    <form id="spaceRequestForm">
+
+                        <!-- Use Type Tiles -->
+                        <div class="form-group">
+                            <label>Type of Use <span class="required">*</span></label>
+                            <p class="form-hint">Select all that apply</p>
+                            <div class="use-type-grid">
+                                <label class="use-type-tile">
+                                    <input type="checkbox" name="useType" value="Photography">
+                                    <span class="use-type-icon">📷</span>
+                                    <span class="use-type-label">Photography</span>
+                                </label>
+                                <label class="use-type-tile">
+                                    <input type="checkbox" name="useType" value="Filming">
+                                    <span class="use-type-icon">🎬</span>
+                                    <span class="use-type-label">Filming</span>
+                                </label>
+                                <label class="use-type-tile">
+                                    <input type="checkbox" name="useType" value="Event / Performance">
+                                    <span class="use-type-icon">🎭</span>
+                                    <span class="use-type-label">Event / Performance</span>
+                                </label>
+                                <label class="use-type-tile">
+                                    <input type="checkbox" name="useType" value="Meeting">
+                                    <span class="use-type-icon">🤝</span>
+                                    <span class="use-type-label">Meeting</span>
+                                </label>
+                                <label class="use-type-tile">
+                                    <input type="checkbox" name="useType" value="Workshop">
+                                    <span class="use-type-icon">🛠</span>
+                                    <span class="use-type-label">Workshop</span>
+                                </label>
+                                <label class="use-type-tile">
+                                    <input type="checkbox" name="useType" value="Other">
+                                    <span class="use-type-icon">✦</span>
+                                    <span class="use-type-label">Other</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Session Details -->
+                        <div class="bookspace-form-grid">
+                            <div class="form-group">
+                                <label for="requestTitle">Session / Event Title <span class="required">*</span></label>
+                                <input type="text" id="requestTitle" placeholder="What should we call this?" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="requestDate">Date <span class="required">*</span></label>
+                                <input type="date" id="requestDate" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="requestStartTime">Start Time <span class="required">*</span></label>
+                                <input type="time" id="requestStartTime" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="requestEndTime">End Time <span class="required">*</span></label>
+                                <input type="time" id="requestEndTime" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="requestHeadcount">Estimated # of People <span class="required">*</span></label>
+                                <input type="number" id="requestHeadcount" min="1" max="100" placeholder="e.g. 5" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="requestEquipment">Bringing Equipment?</label>
+                                <select id="requestEquipment">
+                                    <option value="No">No</option>
+                                    <option value="Yes — minimal (tripod, camera, etc.)">Yes — minimal (tripod, camera, etc.)</option>
+                                    <option value="Yes — significant (lights, rigs, speakers, etc.)">Yes — significant (lights, rigs, speakers, etc.)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="requestDescription">Describe Your Use of the Space <span class="required">*</span></label>
+                            <textarea id="requestDescription" rows="5" placeholder="Tell us about what you're planning. The more detail, the better we can prepare." required></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="requestSpecialNeeds">Special Needs or Requirements</label>
+                            <textarea id="requestSpecialNeeds" rows="3" placeholder="Specific setup, access needs, anything else we should know..."></textarea>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="requestContact">Best Way to Reach You <span class="required">*</span></label>
+                            <input type="text" id="requestContact" placeholder="Phone, email, Instagram — whatever works" required>
+                        </div>
+
+                        <!-- Contribution Slider -->
+                        <div class="form-group contribution-group">
+                            <label>Monetary Contribution to the Space</label>
+                            <p class="form-hint">DōM operates on a contribution model — whatever you can offer helps keep the space alive for everyone. Slide to indicate what feels right for your use.</p>
+                            <div class="contribution-slider-wrapper">
+                                <div class="contribution-display">
+                                    <span class="contribution-amount" id="contributionDisplay">$25</span>
+                                    <span class="contribution-label" id="contributionLabel">Appreciated</span>
+                                </div>
+                                <input type="range" id="contributionSlider" min="10" max="300" step="5" value="25" class="contribution-slider">
+                                <div class="contribution-scale">
+                                    <span>$10</span>
+                                    <span>$75</span>
+                                    <span>$150</span>
+                                    <span>$225</span>
+                                    <span>$300+</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary bookspace-submit-btn">Submit Request</button>
+                    </form>
+                </div>
+
+                <!-- Logged out state -->
+                <div id="bookSpaceLoginPrompt" class="access-denied" style="display: none;">
+                    <h3>Members Only</h3>
+                    <p>Please log in to request use of the DōM space.</p>
+                    <button class="btn btn-primary" onclick="app.showAuthModal()">Log In</button>
+                </div>
+
+                <!-- Admin: All Requests Panel -->
+                <div id="spaceRequestsAdmin" style="display: none;">
+                    <div class="admin-requests-header">
+                        <h3>Space Requests</h3>
+                        <button class="btn btn-outline btn-sm" id="refreshRequestsBtn">Refresh</button>
+                    </div>
+                    <div id="spaceRequestsList" class="space-requests-list">
+                        <p class="empty-state">Loading requests...</p>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- DONATE SECTION -->
+        <section class="section" id="donate">
+            <div class="container">
+
+                <div class="donate-hero">
+                    <h2>Support DōM</h2>
+                    <p>Every contribution keeps the space alive — the lights on, the doors open, the community growing. Give what you can.</p>
+                </div>
+
+                <div class="donate-card">
+                    <h3>Choose an Amount</h3>
+
+                    <div class="donation-preset-grid">
+                        <button class="donation-preset-btn" data-amount="5">$5</button>
+                        <button class="donation-preset-btn" data-amount="10">$10</button>
+                        <button class="donation-preset-btn active" data-amount="25">$25</button>
+                        <button class="donation-preset-btn" data-amount="50">$50</button>
+                        <button class="donation-preset-btn" data-amount="100">$100</button>
+                    </div>
+
+                    <div class="form-group donation-custom-group">
+                        <label for="donationCustomAmount">Or enter a custom amount</label>
+                        <div class="donation-input-wrap">
+                            <span class="donation-currency">$</span>
+                            <input type="number" id="donationCustomAmount" min="1" step="1" placeholder="Other amount">
+                        </div>
+                    </div>
+
+                    <button class="btn btn-primary donation-submit-btn" id="donateSumbitBtn">
+                        Donate with Stripe
+                    </button>
+
+                    <p class="donation-note">Secure checkout via Stripe. DōM is a community space — your support goes directly to maintaining and growing the collective.</p>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- ADMIN DASHBOARD SECTION -->
+        <section class="section" id="admin">
+            <div class="container">
+                <div class="admin-dash-header">
+                    <h2>Admin Dashboard</h2>
+                    <div class="admin-space-toggle" id="adminDashSpaceToggle">
+                        <span id="adminDashSpaceLabel">Space: CLOSED</span>
+                        <button class="btn btn-outline btn-sm" id="adminDashSpaceBtn" onclick="app.toggleSpaceStatus()">Set Open</button>
+                    </div>
+                </div>
+
+                <!-- Stats Row -->
+                <div class="admin-stats-row" id="adminStatsRow">
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-num" id="admStatMembers">—</span>
+                        <span class="admin-stat-label">Members</span>
+                    </div>
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-num" id="admStatCheckedIn">—</span>
+                        <span class="admin-stat-label">In Space Now</span>
+                    </div>
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-num" id="admStatPending">—</span>
+                        <span class="admin-stat-label">Pending Requests</span>
+                    </div>
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-num" id="admStatUnverified">—</span>
+                        <span class="admin-stat-label">Unverified</span>
+                    </div>
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-num" id="admStatPaintings">—</span>
+                        <span class="admin-stat-label">Paintings</span>
+                    </div>
+                    <div class="admin-stat-card">
+                        <span class="admin-stat-num" id="admStatNeeds">—</span>
+                        <span class="admin-stat-label">Open Needs</span>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="admin-quick-actions">
+                    <button class="btn btn-primary" onclick="app.showAddPaintingModal()">+ Add Painting</button>
+                    <button class="btn btn-outline" onclick="app.showAdminTab('requests')">Space Requests</button>
+                    <button class="btn btn-outline" onclick="app.showAdminTab('members')">Manage Members</button>
+                    <button class="btn btn-outline" onclick="app.showAdminTab('feedback')">View Feedback</button>
+                </div>
+
+                <!-- Tabs -->
+                <div class="admin-tabs">
+                    <button class="admin-tab-btn active" data-tab="checkins" onclick="app.showAdminTab('checkins')">Check-ins</button>
+                    <button class="admin-tab-btn" data-tab="requests" onclick="app.showAdminTab('requests')">Space Requests</button>
+                    <button class="admin-tab-btn" data-tab="members" onclick="app.showAdminTab('members')">Members</button>
+                    <button class="admin-tab-btn" data-tab="gallery" onclick="app.showAdminTab('gallery')">Gallery</button>
+                    <button class="admin-tab-btn" data-tab="feedback" onclick="app.showAdminTab('feedback')">Feedback</button>
+                </div>
+
+                <!-- Tab Panels -->
+                <div id="adminTab-checkins" class="admin-tab-panel">
+                    <div class="admin-panel-actions">
+                        <div class="checkin-stats">
+                            <div class="stat-card"><span class="stat-number" id="dashTotalIn">0</span><span class="stat-label">In Space</span></div>
+                            <div class="stat-card"><span class="stat-number" id="dashTotalOut">0</span><span class="stat-label">Checked Out</span></div>
+                        </div>
+                        <div class="checkin-filters">
+                            <button class="filter-btn active" data-filter="all" onclick="app.setDashCheckinFilter('all')">All</button>
+                            <button class="filter-btn" data-filter="in" onclick="app.setDashCheckinFilter('in')">In Space</button>
+                            <button class="filter-btn" data-filter="out" onclick="app.setDashCheckinFilter('out')">Out</button>
+                        </div>
+                    </div>
+                    <div class="checkin-list" id="dashCheckinList"></div>
+                    <div class="activity-log" style="margin-top:2rem;">
+                        <div class="activity-log-header">
+                            <h3>Activity Log</h3>
+                            <div class="activity-log-nav">
+                                <button class="btn btn-outline btn-sm" id="dashActivityPrev">◀ PREV</button>
+                                <span class="activity-log-date" id="dashActivityWeekLabel">—</span>
+                                <button class="btn btn-outline btn-sm" id="dashActivityNext">NEXT ▶</button>
+                            </div>
+                        </div>
+                        <div class="activity-log-summary" id="dashActivitySummary"></div>
+                        <div class="activity-week-grid" id="dashActivityGrid"></div>
+                    </div>
+                </div>
+
+                <div id="adminTab-requests" class="admin-tab-panel" style="display:none;">
+                    <div id="dashRequestsList"></div>
+                </div>
+
+                <div id="adminTab-members" class="admin-tab-panel" style="display:none;">
+                    <div id="dashMembersList"></div>
+                </div>
+
+                <div id="adminTab-gallery" class="admin-tab-panel" style="display:none;">
+                    <div class="admin-panel-actions">
+                        <button class="btn btn-primary" onclick="app.showAddPaintingModal()">+ Add Painting</button>
+                    </div>
+                    <div id="dashGalleryList"></div>
+                </div>
+
+                <div id="adminTab-feedback" class="admin-tab-panel" style="display:none;">
+                    <div id="dashFeedbackList"></div>
+                </div>
+            </div>
+        </section>
+
         <!-- ABOUT SECTION -->
         <section class="section" id="about">
             <div class="container">
@@ -598,26 +944,13 @@
         <div class="modal-content">
             <span class="close">&times;</span>
             <h3 id="authModalTitle">Login</h3>
-            <form id="authForm">
-                <div class="form-group">
-                    <label for="authEmail">Email</label>
-                    <input type="email" id="authEmail" required>
-                </div>
-                <div class="form-group" id="authPasswordGroup">
-                    <label for="authPassword">Password</label>
-                    <input type="password" id="authPassword" required>
-                </div>
-                <div class="form-group" id="authNameGroup" style="display: none;">
-                    <label for="authName">Full Name</label>
-                    <input type="text" id="authName">
-                </div>
-                <button type="submit" class="btn btn-primary" id="authSubmit">Login</button>
-
-                <div style="text-align: center; margin: 1.5rem 0; position: relative;">
-                    <span style="background: #fff; padding: 0 1rem; position: relative; z-index: 1;">OR</span>
-                    <hr style="border: 2px solid #000; margin-top: -1.2rem;">
-                </div>
-
+            <div>
+                <button type="button" class="btn btn-apple-signin" id="appleSignInBtn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem; background: #000; color: #fff; border-color: #000; margin-bottom: 8px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                        <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.7 9.05 7.4c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.39-1.32 2.76-2.54 4zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+                    </svg>
+                    Sign in with Apple
+                </button>
                 <button type="button" class="btn btn-outline" id="googleSignInBtn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 0.5rem;">
                     <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg">
                         <g fill="none" fill-rule="evenodd">
@@ -636,12 +969,7 @@
                     </svg>
                     You'll be securely redirected to Google's sign-in page. Authentication is handled by <a href="https://supabase.com" target="_blank" rel="noopener">Supabase</a>, our trusted infrastructure provider.
                 </p>
-
-                <p class="auth-toggle">
-                    <span id="authToggleText">Don't have an account?</span>
-                    <a href="#" id="authToggleLink">Sign up</a>
-                </p>
-            </form>
+            </div>
         </div>
     </div>
 
@@ -896,8 +1224,24 @@
                     <textarea id="paintingDescription" rows="4" placeholder="Describe the artwork..."></textarea>
                 </div>
                 <div class="form-group">
+                    <label for="paintingSaleStatus">Listing Status *</label>
+                    <select id="paintingSaleStatus">
+                        <option value="for_sale">For Sale</option>
+                        <option value="for_trade">For Trade</option>
+                        <option value="not_for_sale">Not for Sale</option>
+                    </select>
+                </div>
+                <div class="form-group" id="paintingPriceGroup">
                     <label for="paintingPrice">Price (USD) *</label>
-                    <input type="number" id="paintingPrice" min="0" step="0.01" required placeholder="0.00">
+                    <input type="number" id="paintingPrice" min="0" step="0.01" placeholder="0.00">
+                </div>
+                <div class="form-group">
+                    <label for="paintingDateCreated">Date Created</label>
+                    <input type="date" id="paintingDateCreated">
+                </div>
+                <div class="form-group">
+                    <label for="paintingDateAdopted">Date Adopted</label>
+                    <input type="date" id="paintingDateAdopted">
                 </div>
                 <div class="form-group">
                     <label for="paintingImageFile">Painting Image * (Choose from gallery or take photo)</label>
@@ -930,6 +1274,57 @@
                     <div class="painting-price" id="paintingDetailPrice"></div>
                     <div class="painting-detail-actions" id="paintingDetailActions"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Detail Modal -->
+    <div class="modal" id="eventDetailModal">
+        <div class="modal-content event-detail-modal-content">
+            <button class="painting-detail-close" onclick="app.closeEventDetail()">&times;</button>
+            <!-- Hero image — full-width, no padding, sits at top -->
+            <div id="eventDetailHero" class="event-detail-hero" style="display:none;">
+                <img id="eventDetailHeroImg" src="" alt="">
+            </div>
+            <div class="event-detail-body">
+                <div class="event-detail-top-row">
+                    <div id="eventDetailPrivateBadge" class="event-detail-private-badge" style="display:none;">PRIVATE</div>
+                    <button class="event-detail-share-btn" id="eventDetailShareBtn" onclick="app.copyEventLink()" title="Copy shareable link">&#128279; Share</button>
+                </div>
+                <h2 id="eventDetailTitle" class="event-detail-title"></h2>
+                <div class="event-detail-meta">
+                    <div id="eventDetailDate" class="event-detail-meta-item"></div>
+                    <div id="eventDetailTime" class="event-detail-meta-item" style="display:none;"></div>
+                    <div id="eventDetailLocation" class="event-detail-meta-item" style="display:none;"></div>
+                </div>
+                <div id="eventDetailDescription" class="event-detail-description"></div>
+                <div id="eventDetailExtraInfo" class="event-detail-extra-info" style="display:none;"></div>
+                <div id="eventDetailAdminEdit" class="event-detail-admin-edit" style="display:none;">
+                    <h4>Edit Event Info</h4>
+                    <div class="form-group">
+                        <label>Extra Info (shown to visitors)</label>
+                        <textarea id="eventDetailExtraInput" rows="4" placeholder="Add event details, links, instructions..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Event Image (optional)</label>
+                        <input type="file" id="eventDetailImageFile" accept="image/*" capture="environment">
+                        <div id="eventDetailImagePreview" style="margin-top:0.75rem;"></div>
+                        <p id="eventDetailImageStatus" style="font-size:0.85rem;font-weight:700;margin-top:0.4rem;"></p>
+                        <input type="hidden" id="eventDetailImageInput">
+                    </div>
+                    <div class="form-group event-detail-ticketing-row">
+                        <label class="event-detail-toggle-label">
+                            <input type="checkbox" id="eventDetailTicketsEnabled">
+                            <span>Enable Ticketing</span>
+                        </label>
+                        <div id="eventDetailTicketPriceGroup" style="display:none; margin-top:0.75rem;">
+                            <label>Ticket Price (USD)</label>
+                            <input type="number" id="eventDetailTicketPrice" min="0.01" step="0.01" placeholder="0.00" style="width:100%;border:3px solid #000;padding:0.75rem;font-size:0.9rem;">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="app.saveEventDetail()">Save</button>
+                </div>
+                <div id="eventDetailActions" class="event-detail-bottom-actions"></div>
             </div>
         </div>
     </div>
@@ -979,6 +1374,11 @@
     <script src="https://js.stripe.com/v3/"></script>
     <script src="https://www.paypal.com/sdk/js?client-id=Abz5_fSTKVE07Lh1f8-Hcduc3VYG15t_bu786-7RM27vCCoQUsoLBcn5evz3lPrdK7JtIT3XVeVRh93g&currency=USD"></script>
     <script src="script.js"></script>
+
+    <footer style="background:#000;color:#555;text-align:center;padding:16px;font-size:12px;font-family:'Arial',sans-serif;">
+        &copy; 2026 Dom Collective &nbsp;&mdash;&nbsp;
+        <a href="/privacy-policy.html" style="color:#FFE500;text-decoration:none;">Privacy Policy</a>
+    </footer>
 
     <!--
     ========================================

@@ -6,6 +6,15 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const GOOGLE_CALENDAR_ID = 'd392dc35dbd1a2f8807f396fcc095f16fe662aaabce1ac6df94e2100aae3378c@group.calendar.google.com';
 const GOOGLE_CALENDAR_API_KEY = 'AIzaSyCU8sdOOUT5LP145Doy7R7MGlJmgtOs3Ls';
 const STRIPE_PUBLISHABLE_KEY = 'pk_live_51SpimJFIZo8yBe9o6xXz3YSVMRYjtAiJq3qEZqn9ytOZcnU7ElBElTkZDIfvYxT7dW2Cj4WuBZAUtX6hHecpcGS100qEwPfjZm';
+// Stripe donation payment link — create one at dashboard.stripe.com/payment-links
+// Enable "Customer chooses price" so any amount can be prefilled via ?prefilled_amount=XXXX (cents)
+const STRIPE_DONATION_LINK = 'https://buy.stripe.com/eVq8wP7YAd660r0doAgnK03';
+
+// EmailJS — space booking notification emails
+// Set these up at https://www.emailjs.com (free tier: 200 emails/month)
+const EMAILJS_PUBLIC_KEY    = 'YOUR_EMAILJS_PUBLIC_KEY';    // Account > API Keys
+const EMAILJS_SERVICE_ID    = 'YOUR_EMAILJS_SERVICE_ID';    // Email Services tab
+const EMAILJS_TEMPLATE_ID   = 'YOUR_EMAILJS_TEMPLATE_ID';   // Email Templates tab
 
 // Clean up stale PKCE verifier BEFORE creating client
 // A leftover verifier with no matching code causes getSession() to hang
@@ -54,6 +63,7 @@ var stripe = (function() {
 class CreativeCollective {
     constructor() {
         this.currentUser = null;
+        this.userRsvps = new Set(); // google event IDs the current user has RSVP'd to
         this.members = [];
         this.needs = [];
         this.events = [];
@@ -68,15 +78,17 @@ class CreativeCollective {
         this.currentGalleryIndex = 0;
         this.checkInStatuses = [];
         this.currentCheckInFilter = 'all';
+        this.spaceIsOpen = false;
         this._authProcessing = false;
         this.subscriptionTiers = [];
         this.userSubscription = null;
 
         // Display name mapping: internal DB values → user-facing labels
         this.tierDisplayNames = {
-            'visitor': 'Creator',
-            'member': 'Contributor',
-            'contributor': 'Catalist',
+            'visitor': 'Community',
+            'member': 'Creator',
+            'contributor': 'Collaborator',
+            'donor': 'Contributor',
             'admin': 'Catalist'
         };
 
@@ -85,6 +97,12 @@ class CreativeCollective {
 
     getTierDisplayName(internalTier) {
         return this.tierDisplayNames[internalTier] || internalTier.charAt(0).toUpperCase() + internalTier.slice(1);
+    }
+
+    // Creator ($20) or higher subscription, or admin
+    hasCreatorAccess() {
+        return ['member', 'contributor'].includes(this.currentUser?.subscription_tier)
+            || this.currentUser?.user_status === 'admin';
     }
 
     // ====================================
@@ -109,6 +127,9 @@ class CreativeCollective {
         const gallerySuccess = urlParams.get('gallery_success');
         const paintingId = urlParams.get('painting_id');
         const galleryCanceled = urlParams.get('gallery_canceled');
+        const donationSuccess = urlParams.get('donation_success');
+        const donationCanceled = urlParams.get('donation_canceled');
+        const ticketSuccess = urlParams.get('ticket_success');
 
         console.log('Checking for existing session...');
         await this.checkSession();
@@ -130,10 +151,33 @@ class CreativeCollective {
             } else if (galleryCanceled === 'true') {
                 this.showAlert('Purchase canceled', 'info');
                 window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (donationSuccess === 'true') {
+                this.showAlert('Thank you for your donation! Your support means everything to DōM. 💛', 'success');
+                this.showSection('donate');
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (donationCanceled === 'true') {
+                this.showAlert('Donation canceled', 'info');
+                this.showSection('donate');
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else if (ticketSuccess === 'true') {
+                this.showAlert('🎟 Ticket confirmed! Check your email — your ticket and QR code are on their way.', 'success');
+                window.history.replaceState({}, document.title, window.location.pathname);
             }
 
             console.log('✓ Data loading initiated');
-            
+
+            // Handle shareable event links: #event=EVENT_ID
+            const hash = window.location.hash;
+            if (hash.startsWith('#event=')) {
+                const eventId = decodeURIComponent(hash.slice(7));
+                try {
+                    await Promise.all([this.fetchMonthEvents(), this.loadEventSettings()]);
+                    if ((this._lastFetchedEvents || []).find(e => e.id === eventId)) {
+                        this.openEventDetail(eventId);
+                    }
+                } catch(e) { console.warn('Could not auto-open event from URL', e); }
+            }
+
             console.log('=== App initialized successfully ===');
         } catch (error) {
             console.error('=== INITIALIZATION FAILED ===');
@@ -274,6 +318,7 @@ async checkSession() {
         await safeLoad('loadEvents', () => this.loadEvents());
         await safeLoad('loadPaintings', () => this.loadPaintings());
         await safeLoad('loadCheckInStatuses', () => this.loadCheckInStatuses());
+        await safeLoad('loadSpaceStatus', () => this.loadSpaceStatus());
         await safeLoad('loadSubscriptionTiers', () => this.loadSubscriptionTiers());
         await safeLoad('updateStats', () => this.updateStats());
         this.renderFeaturedMembers();
@@ -350,7 +395,9 @@ async checkSession() {
                 await this.loadEvents();
                 await this.loadPaintings();
                 await this.loadCheckInStatuses();
+                await this.loadSpaceStatus();
                 await this.loadSubscriptionTiers();
+                await this.fetchUserRsvps();
                 await this.updateStats();
 
                 // Render homepage sections
@@ -370,6 +417,10 @@ async checkSession() {
                     if (checkInBtn && this.currentUser) {
                         checkInBtn.style.display = 'block';
                         console.log('✓ Check-in nav button displayed');
+                    }
+                    const bookSpaceBtn = document.getElementById('bookSpaceNavBtn');
+                    if (bookSpaceBtn && this.currentUser) {
+                        bookSpaceBtn.style.display = 'block';
                     }
                 }, 100);
 
@@ -427,6 +478,8 @@ async checkSession() {
             if (checkInBtn) {
                 checkInBtn.style.display = 'block';
             }
+            const bookSpaceBtn = document.getElementById('bookSpaceNavBtn');
+            if (bookSpaceBtn) bookSpaceBtn.style.display = 'block';
 
             this.showSection('profile');
             this.showAlert('Welcome! Please complete your profile.', 'success');
@@ -441,41 +494,57 @@ async checkSession() {
         this.currentUser = null;
         this.updateAuthButton();
         document.getElementById('profileNavBtn').style.display = 'none';
-            document.getElementById('checkInNavBtn').style.display = 'none';
-        
-        if (document.getElementById('profile')?.classList.contains('active')) {
+        document.getElementById('checkInNavBtn').style.display = 'none';
+        const _bsn = document.getElementById('bookSpaceNavBtn');
+        if (_bsn) _bsn.style.display = 'none';
+
+        const _an = document.getElementById('adminNavBtn');
+        const _adn = document.getElementById('adminDropdownBtn');
+        if (_an) _an.style.display = 'none';
+        if (_adn) _adn.style.display = 'none';
+
+        const activeSection = document.querySelector('.section.active');
+        if (activeSection && ['profile', 'bookspace', 'admin'].includes(activeSection.id)) {
             this.showSection('home');
         }
         
         this.showAlert('Logged out successfully', 'success');
     }
 
+    isNativeApp() {
+        return navigator.userAgent.includes('DomCollectiveApp');
+    }
+
+    async signInWithApple() {
+        try {
+            const { error } = await supabase.auth.signInWithOAuth({
+                provider: 'apple',
+                options: { redirectTo: window.location.origin + window.location.pathname }
+            });
+            if (error) throw error;
+        } catch (error) {
+            console.error('Apple sign-in failed:', error);
+            this.showAlert('Failed to sign in with Apple: ' + error.message, 'error');
+        }
+    }
+
     async signInWithGoogle() {
         try {
-            console.log('🔐 Initiating Google sign-in...');
-            console.log('📱 Current URL:', window.location.href);
-            console.log('🔙 Redirect URL will be:', `${window.location.origin}${window.location.pathname}`);
+            const options = {
+                redirectTo: `${window.location.origin}${window.location.pathname}`,
+                skipBrowserRedirect: false
+            };
+            // Don't request offline access / consent in native WKWebView — causes loading hang
+            if (!this.isNativeApp()) {
+                options.queryParams = { access_type: 'offline', prompt: 'consent' };
+            }
 
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
-                options: {
-                    redirectTo: `${window.location.origin}${window.location.pathname}`,
-                    skipBrowserRedirect: false,
-                    queryParams: {
-                        access_type: 'offline',
-                        prompt: 'consent'
-                    }
-                }
+                options
             });
 
-            if (error) {
-                console.error('❌ Google OAuth error:', error);
-                throw error;
-            }
-
-            console.log('✅ Google OAuth response:', data);
-            console.log('✓ Google OAuth initiated, redirecting to:', data?.url || 'unknown');
-            // The page will redirect to Google, no need to do anything else here
+            if (error) throw error;
         } catch (error) {
             console.error('❌ Google sign-in failed:', error);
             this.showAlert('Failed to sign in with Google: ' + error.message, 'error');
@@ -572,6 +641,7 @@ async checkSession() {
             await this.loadMembers();
             await this.loadMissions();
             await this.loadEvents();
+            await this.fetchUserRsvps();
 
             this.showAlert(`Welcome back, ${this.currentUser.name}!`, 'success');
         } catch (error) {
@@ -717,6 +787,8 @@ async checkSession() {
         const authDropdownBtn = document.getElementById('authDropdownBtn');
         const profileDropdownBtn = document.getElementById('profileDropdownBtn');
         const checkInDropdownBtn = document.getElementById('checkInDropdownBtn');
+        const bookSpaceDropdownBtn = document.getElementById('bookSpaceDropdownBtn');
+        const bookSpaceNavBtn = document.getElementById('bookSpaceNavBtn');
 
         if (this.currentUser) {
             document.body.classList.add('user-logged-in');
@@ -729,12 +801,23 @@ async checkSession() {
             if (checkInDropdownBtn) {
                 checkInDropdownBtn.style.display = 'block';
             }
+            if (bookSpaceDropdownBtn) bookSpaceDropdownBtn.style.display = 'block';
+            if (bookSpaceNavBtn) bookSpaceNavBtn.style.display = 'block';
 
-            // Show create event button only for admins
+            // Show create event button and admin nav only for admins
             if (createEventBtn && this.currentUser.user_status === 'admin') {
                 createEventBtn.style.display = 'block';
             } else if (createEventBtn) {
                 createEventBtn.style.display = 'none';
+            }
+            const adminNavBtn = document.getElementById('adminNavBtn');
+            const adminDropdownBtn = document.getElementById('adminDropdownBtn');
+            if (this.currentUser.user_status === 'admin') {
+                if (adminNavBtn) adminNavBtn.style.display = 'block';
+                if (adminDropdownBtn) adminDropdownBtn.style.display = 'block';
+            } else {
+                if (adminNavBtn) adminNavBtn.style.display = 'none';
+                if (adminDropdownBtn) adminDropdownBtn.style.display = 'none';
             }
 
             // Update home check-in widget
@@ -748,10 +831,16 @@ async checkSession() {
             if (authDropdownBtn) authDropdownBtn.textContent = 'Login';
             if (profileDropdownBtn) profileDropdownBtn.style.display = 'none';
             if (checkInDropdownBtn) checkInDropdownBtn.style.display = 'none';
+            if (bookSpaceDropdownBtn) bookSpaceDropdownBtn.style.display = 'none';
+            if (bookSpaceNavBtn) bookSpaceNavBtn.style.display = 'none';
 
             if (createEventBtn) {
                 createEventBtn.style.display = 'none';
             }
+            const adminNavBtn2 = document.getElementById('adminNavBtn');
+            const adminDropdownBtn2 = document.getElementById('adminDropdownBtn');
+            if (adminNavBtn2) adminNavBtn2.style.display = 'none';
+            if (adminDropdownBtn2) adminDropdownBtn2.style.display = 'none';
         }
     }
 
@@ -908,16 +997,18 @@ async checkSession() {
         const statusText = document.getElementById('statusText');
 
         if (statusBanner && statusText) {
-            const statusConfig = {
-                'unverified': { text: 'Unverified Account - Limited Access', bg: '#fff', color: '#000' },
-                'verified': { text: 'Verified', bg: '#000', color: '#fff' },
-                'admin': { text: 'Catalist', bg: '#000', color: '#fff' }
-            };
-
-            const config = statusConfig[this.currentUser.user_status] || statusConfig['unverified'];
-            statusText.textContent = config.text;
-            statusBanner.style.background = config.bg;
-            statusBanner.style.color = config.color;
+            if (this.currentUser.user_status === 'unverified') {
+                statusText.textContent = 'Unverified — Limited Access';
+                statusBanner.style.background = '#fff';
+                statusBanner.style.color = '#000';
+            } else {
+                const tier = this.currentUser.user_status === 'admin'
+                    ? 'admin'
+                    : (this.currentUser.subscription_tier || 'visitor');
+                statusText.textContent = this.getTierDisplayName(tier);
+                statusBanner.style.background = '#000';
+                statusBanner.style.color = '#fff';
+            }
         }
 
         // Load form data
@@ -1223,10 +1314,326 @@ async checkSession() {
                 console.log('First event:', data.items[0]);
             }
             
-            return data.items || [];
+            const items = data.items || [];
+            this._lastFetchedEvents = [...(this._lastFetchedEvents || []), ...items].filter((e, i, arr) => arr.findIndex(x => x.id === e.id) === i);
+            return items;
         } catch (error) {
             console.error('Google Calendar API error:', error);
             return [];
+        }
+    }
+
+    async fetchMonthEvents() {
+        const now = new Date();
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59);
+        try {
+            const url = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(GOOGLE_CALENDAR_ID)}/events?key=${GOOGLE_CALENDAR_API_KEY}&timeMin=${now.toISOString()}&timeMax=${endOfMonth.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=30`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Calendar API ${response.status}`);
+            const data = await response.json();
+            const items = data.items || [];
+            this._lastFetchedEvents = [...(this._lastFetchedEvents || []), ...items].filter((e, i, arr) => arr.findIndex(x => x.id === e.id) === i);
+            return items;
+        } catch (error) {
+            console.error('fetchMonthEvents error:', error);
+            return [];
+        }
+    }
+
+    async loadEventSettings() {
+        try {
+            const { data } = await supabase.from('event_settings').select('*');
+            this.eventSettings = {};
+            (data || []).forEach(s => { this.eventSettings[s.event_id] = s; });
+        } catch(e) {
+            this.eventSettings = {};
+        }
+    }
+
+    async toggleEventPrivacyHome(eventId, currentIsPrivate) {
+        await this.toggleEventPrivacy(eventId, currentIsPrivate);
+        await this.renderUpcomingEventsHome();
+    }
+
+    openEventDetail(eventId) {
+        const event = (this._lastFetchedEvents || []).find(e => e.id === eventId);
+        if (!event) return;
+        this._detailEventId = eventId;
+        this._detailEvent = event;
+        const settings = this.eventSettings?.[eventId] || {};
+        const isPrivate = settings.is_private || false;
+        const isAdmin = this.currentUser?.user_status === 'admin';
+        const ticketsEnabled = settings.tickets_enabled || false;
+        const ticketPrice = parseFloat(settings.ticket_price || 0);
+
+        // Update URL for shareability
+        window.history.replaceState(null, '', '#event=' + encodeURIComponent(eventId));
+
+        const eventDate = event.start.dateTime ? new Date(event.start.dateTime) : new Date(event.start.date + 'T00:00:00');
+
+        document.getElementById('eventDetailTitle').textContent = event.summary || 'Untitled Event';
+        document.getElementById('eventDetailDate').textContent = '📅 ' + eventDate.toLocaleDateString(undefined, {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+
+        const timeEl = document.getElementById('eventDetailTime');
+        if (event.start.dateTime) {
+            const end = event.end?.dateTime ? new Date(event.end.dateTime) : null;
+            timeEl.textContent = '🕐 ' + eventDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + (end ? ' – ' + end.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '');
+            timeEl.style.display = 'block';
+        } else { timeEl.style.display = 'none'; }
+
+        const locEl = document.getElementById('eventDetailLocation');
+        if (event.location) { locEl.textContent = '📍 ' + event.location; locEl.style.display = 'block'; }
+        else locEl.style.display = 'none';
+
+        document.getElementById('eventDetailDescription').textContent = event.description || '';
+
+        const extraEl = document.getElementById('eventDetailExtraInfo');
+        extraEl.textContent = settings.extra_info || '';
+        extraEl.style.display = settings.extra_info ? 'block' : 'none';
+
+        // Hero image — full-width at top of modal
+        const hero = document.getElementById('eventDetailHero');
+        if (settings.image_url) {
+            document.getElementById('eventDetailHeroImg').src = settings.image_url;
+            document.getElementById('eventDetailHeroImg').alt = event.summary || '';
+            hero.style.display = 'block';
+        } else hero.style.display = 'none';
+
+        document.getElementById('eventDetailPrivateBadge').style.display = isPrivate ? 'block' : 'none';
+
+        const adminEdit = document.getElementById('eventDetailAdminEdit');
+        if (isAdmin) {
+            adminEdit.style.display = 'block';
+            document.getElementById('eventDetailExtraInput').value = settings.extra_info || '';
+            document.getElementById('eventDetailImageInput').value = settings.image_url || '';
+            document.getElementById('eventDetailImageStatus').textContent = '';
+            document.getElementById('eventDetailImagePreview').innerHTML = settings.image_url
+                ? `<img src="${settings.image_url}" alt="" style="max-width:100%;border:3px solid #000;">`
+                : '';
+            const fileInput = document.getElementById('eventDetailImageFile');
+            fileInput.value = '';
+            fileInput.onchange = (e) => this.handleEventDetailImageSelect(e);
+            const ticketCheck = document.getElementById('eventDetailTicketsEnabled');
+            const ticketPriceGroup = document.getElementById('eventDetailTicketPriceGroup');
+            ticketCheck.checked = ticketsEnabled;
+            document.getElementById('eventDetailTicketPrice').value = ticketPrice || '';
+            ticketPriceGroup.style.display = ticketsEnabled ? 'block' : 'none';
+            ticketCheck.onchange = () => {
+                ticketPriceGroup.style.display = ticketCheck.checked ? 'block' : 'none';
+            };
+        } else adminEdit.style.display = 'none';
+
+        // Build actions
+        const actionsEl = document.getElementById('eventDetailActions');
+        actionsEl.innerHTML = '';
+        const safeTitle = (event.summary || '').replace(/'/g, "\\'");
+        const safeDateStr = eventDate.toISOString().split('T')[0];
+        const rsvpd = this.userRsvps.has(eventId);
+
+        if (ticketsEnabled && ticketPrice > 0) {
+            actionsEl.innerHTML += `<button class="btn btn-primary event-ticket-btn" onclick="app.purchaseEventTicket('${eventId}')">Get Tickets — $${ticketPrice.toFixed(2)}</button>`;
+        }
+
+        if (this.currentUser) {
+            // Logged-in RSVP — all tiers (Community and up)
+            actionsEl.innerHTML += `
+                <button class="btn-rsvp-action ${rsvpd ? 'rsvpd' : ''}" data-rsvp-event="${eventId}" onclick="app.toggleRsvp('${eventId}','${safeTitle}','${safeDateStr}')">${rsvpd ? "✓ RSVP'd" : 'RSVP'}</button>
+                <a href="${this.buildGoogleCalendarUrl(event)}" target="_blank" class="btn-rsvp">+ Add to Calendar</a>`;
+        } else {
+            // Guest RSVP — name input inline, or sign in
+            actionsEl.innerHTML += `
+                <div class="guest-rsvp-wrap">
+                    <button class="btn-rsvp-action" id="guestRsvpToggleBtn" onclick="app.showGuestRsvpForm()"">RSVP</button>
+                    <div class="guest-rsvp-form" id="guestRsvpForm" style="display:none;">
+                        <input type="text" id="guestRsvpNameInput" placeholder="Your name" maxlength="60" autocomplete="name">
+                        <div class="guest-rsvp-btns">
+                            <button class="btn btn-primary" onclick="app.submitGuestRsvp('${eventId}','${safeTitle}','${safeDateStr}')">Confirm RSVP</button>
+                            <button class="btn btn-outline" onclick="app.hideGuestRsvpForm()">Cancel</button>
+                        </div>
+                    </div>
+                    <button class="btn btn-outline guest-signin-btn" onclick="app.showAuthModal()">Sign in to RSVP</button>
+                </div>
+                <a href="${this.buildGoogleCalendarUrl(event)}" target="_blank" class="btn-rsvp">+ Add to Calendar</a>`;
+        }
+
+        if (isAdmin) {
+            actionsEl.innerHTML += `<button class="btn btn-outline event-privacy-btn" onclick="app.toggleEventPrivacy('${eventId}', ${isPrivate})">${isPrivate ? '🔓 Make Public' : '🔒 Set Private'}</button>`;
+        }
+
+        document.getElementById('eventDetailModal').classList.add('active');
+    }
+
+    closeEventDetail() {
+        window.history.replaceState(null, '', window.location.pathname);
+        document.getElementById('eventDetailModal').classList.remove('active');
+    }
+
+    showGuestRsvpForm() {
+        document.getElementById('guestRsvpForm').style.display = 'block';
+        document.getElementById('guestRsvpToggleBtn').style.display = 'none';
+        setTimeout(() => document.getElementById('guestRsvpNameInput')?.focus(), 50);
+    }
+
+    hideGuestRsvpForm() {
+        document.getElementById('guestRsvpForm').style.display = 'none';
+        document.getElementById('guestRsvpToggleBtn').style.display = 'block';
+        document.getElementById('guestRsvpNameInput').value = '';
+    }
+
+    async submitGuestRsvp(googleEventId, eventTitle, eventDate) {
+        const nameInput = document.getElementById('guestRsvpNameInput');
+        const name = nameInput?.value.trim();
+        if (!name) { this.showAlert('Please enter your name to RSVP.', 'error'); nameInput?.focus(); return; }
+        try {
+            const { error } = await supabase
+                .from('event_rsvps')
+                .insert({ google_event_id: googleEventId, event_title: eventTitle, event_date: eventDate, guest_name: name, user_id: null });
+            if (error) throw error;
+            // Replace the whole guest wrap with a confirmation
+            const wrap = document.getElementById('guestRsvpForm')?.closest('.guest-rsvp-wrap');
+            if (wrap) wrap.outerHTML = `<span class="btn-rsvp-action rsvpd">✓ RSVP'd as ${name}</span>`;
+            this.showAlert(`RSVP confirmed for ${name}!`, 'success');
+        } catch(e) {
+            console.error('Guest RSVP error:', e);
+            this.showAlert('Could not save RSVP: ' + (e?.message || e), 'error');
+        }
+    }
+
+    copyEventLink() {
+        const eventId = this._detailEventId;
+        if (!eventId) return;
+        const previewUrl = `https://dom-collective.com/event.php?e=${encodeURIComponent(eventId)}`;
+        navigator.clipboard.writeText(previewUrl).then(() => {
+            const btn = document.getElementById('eventDetailShareBtn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '✓ Copied!';
+            setTimeout(() => { btn.innerHTML = orig; }, 2000);
+        }).catch(() => this.showAlert('Copy the URL from your address bar to share.', 'info'));
+    }
+
+    async purchaseEventTicket(eventId) {
+        const event = this._detailEvent;
+        const settings = this.eventSettings?.[eventId] || {};
+        const ticketPrice = parseFloat(settings.ticket_price || 0);
+        if (!ticketPrice) return;
+        const btn = document.querySelector('.event-ticket-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Redirecting...'; }
+        try {
+            const origin = window.location.origin;
+            const eventDate = event?.start?.date || event?.start?.dateTime?.split('T')[0] || '';
+            const { data, error } = await supabase.functions.invoke('create-ticket-checkout', {
+                body: {
+                    event_id: eventId,
+                    event_title: event?.summary || 'DōM Event',
+                    event_date: eventDate,
+                    amount_cents: Math.round(ticketPrice * 100),
+                    buyer_email: this.currentUser?.email || null,
+                    success_url: `${origin}/?ticket_success=true`,
+                    cancel_url: `${origin}/#event=${encodeURIComponent(eventId)}`
+                }
+            });
+            if (error) throw error;
+            if (!data?.url) throw new Error('No checkout URL');
+            window.location.href = data.url;
+        } catch (err) {
+            this.showAlert('Error starting checkout. Please try again.', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = `Get Tickets — $${ticketPrice.toFixed(2)}`; }
+        }
+    }
+
+    async handleEventDetailImageSelect(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) { this.showAlert('Please select an image file', 'error'); e.target.value = ''; return; }
+        if (file.size > 5 * 1024 * 1024) { this.showAlert('Image must be less than 5MB', 'error'); e.target.value = ''; return; }
+
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            document.getElementById('eventDetailImagePreview').innerHTML =
+                `<img src="${ev.target.result}" alt="Preview" style="max-width:100%;border:3px solid #000;">`;
+        };
+        reader.readAsDataURL(file);
+
+        const statusEl = document.getElementById('eventDetailImageStatus');
+        statusEl.textContent = 'Uploading...';
+        try {
+            const ext = file.name.split('.').pop();
+            const fileName = `event-${Date.now()}.${ext}`;
+            const { error } = await supabase.storage.from('event_images').upload(fileName, file, { upsert: true });
+            if (error) throw error;
+            const { data: { publicUrl } } = supabase.storage.from('event_images').getPublicUrl(fileName);
+            document.getElementById('eventDetailImageInput').value = publicUrl;
+            statusEl.textContent = '✓ Uploaded';
+            setTimeout(() => { statusEl.textContent = ''; }, 3000);
+        } catch(err) {
+            statusEl.textContent = '✗ Upload failed: ' + err.message;
+            e.target.value = '';
+        }
+    }
+
+    async saveEventDetail() {
+        if (!this._detailEventId) return;
+        const extra_info = document.getElementById('eventDetailExtraInput').value.trim() || null;
+        const image_url = document.getElementById('eventDetailImageInput').value.trim() || null;
+        const tickets_enabled = document.getElementById('eventDetailTicketsEnabled').checked;
+        const ticket_price = tickets_enabled
+            ? parseFloat(document.getElementById('eventDetailTicketPrice').value) || 0
+            : 0;
+        const event_title = this._detailEvent?.summary || null;
+        try {
+            const { error: upsertErr } = await supabase.from('event_settings').upsert({
+                event_id: this._detailEventId,
+                event_title,
+                extra_info,
+                image_url,
+                tickets_enabled,
+                ticket_price,
+                updated_at: new Date().toISOString(),
+                updated_by: this.currentUser.id
+            }, { onConflict: 'event_id' });
+            if (upsertErr) throw upsertErr;
+            this.eventSettings[this._detailEventId] = {
+                ...(this.eventSettings[this._detailEventId] || {}),
+                extra_info, image_url, tickets_enabled, ticket_price
+            };
+            // Refresh visible content
+            const extraEl = document.getElementById('eventDetailExtraInfo');
+            extraEl.textContent = extra_info || '';
+            extraEl.style.display = extra_info ? 'block' : 'none';
+            const hero = document.getElementById('eventDetailHero');
+            if (image_url) {
+                document.getElementById('eventDetailHeroImg').src = image_url;
+                hero.style.display = 'block';
+            } else hero.style.display = 'none';
+            // Refresh ticket button
+            const actionsEl = document.getElementById('eventDetailActions');
+            const existing = actionsEl.querySelector('.event-ticket-btn');
+            if (tickets_enabled && ticket_price > 0) {
+                const btnHtml = `<button class="btn btn-primary event-ticket-btn" onclick="app.purchaseEventTicket('${this._detailEventId}')">Get Tickets — $${ticket_price.toFixed(2)}</button>`;
+                if (existing) existing.outerHTML = btnHtml;
+                else actionsEl.insertAdjacentHTML('afterbegin', btnHtml);
+            } else if (existing) existing.remove();
+            this.showAlert('Event saved!', 'success');
+        } catch(e) {
+            console.error('saveEventDetail error:', e);
+            this.showAlert('Error: ' + (e?.message || JSON.stringify(e)), 'error');
+        }
+    }
+
+    async toggleEventPrivacy(eventId, currentIsPrivate) {
+        const newVal = !currentIsPrivate;
+        try {
+            await supabase.from('event_settings').upsert({
+                event_id: eventId,
+                is_private: newVal,
+                updated_at: new Date().toISOString(),
+                updated_by: this.currentUser.id
+            }, { onConflict: 'event_id' });
+            this.eventSettings[eventId] = { ...(this.eventSettings[eventId] || {}), is_private: newVal };
+            this.showAlert(`Event set to ${newVal ? 'Private' : 'Public'}`, 'success');
+            this.renderUpcomingWeekEvents();
+        } catch(e) {
+            this.showAlert('Error updating event privacy', 'error');
         }
     }
 
@@ -1571,8 +1978,8 @@ async checkSession() {
         
         if (!this.currentUser) return;
 
-        if (this.currentUser.user_status !== 'verified' && this.currentUser.user_status !== 'admin') {
-            this.showAlert('Only verified members can post missions', 'error');
+        if (!this.hasCreatorAccess()) {
+            this.showAlert('Creator membership ($20/mo) or higher is required to post missions.', 'error');
             return;
         }
 
@@ -1740,9 +2147,9 @@ async updateMission(needId) {
         console.log('✓ User status:', this.currentUser.user_status);
         console.log('✓ User ID:', this.currentUser.id);
         
-        if (this.currentUser.user_status !== 'verified' && this.currentUser.user_status !== 'admin') {
-            console.log('❌ User not verified/admin');
-            this.showAlert('Only verified members can post needs. Please contact an admin for verification.', 'error');
+        if (!this.hasCreatorAccess()) {
+            console.log('❌ User does not have Creator access');
+            this.showAlert('Creator membership ($20/mo) or higher is required to post needs.', 'error');
             return;
         }
         
@@ -1962,6 +2369,12 @@ async updateMission(needId) {
             return;
         }
 
+        if (sectionName === 'bookspace' && !this.currentUser) {
+            this.showAlert('Please login to book the space', 'error');
+            this.showAuthModal();
+            return;
+        }
+
         // Update mobile navigation
         document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
         const activeBtn = document.querySelector(`.nav-btn[data-section="${sectionName}"]`);
@@ -2003,10 +2416,19 @@ async updateMission(needId) {
                 this.loadUserProfileForm();
                 break;
             case 'calendar':
-                // Load calendar async in background
-                this.renderUpcomingWeekEvents().catch(err => {
+                this.loadEventSettings().then(() => this.renderUpcomingWeekEvents()).catch(err => {
                     console.error('Error loading calendar:', err);
                 });
+                // Show admin RSVP panel for admins
+                const rsvpSection = document.getElementById('adminRsvpSection');
+                if (rsvpSection) {
+                    if (this.currentUser?.user_status === 'admin') {
+                        rsvpSection.style.display = 'block';
+                        this.renderAdminRsvpPanel();
+                    } else {
+                        rsvpSection.style.display = 'none';
+                    }
+                }
                 break;
             case 'checkin':
                 this.loadCheckInStatuses();
@@ -2015,12 +2437,33 @@ async updateMission(needId) {
             case 'about':
                 this.loadAboutSection();
                 break;
+            case 'bookspace':
+                this.loadBookSpaceSection();
+                break;
+            case 'donate':
+                this.initDonateSection();
+                break;
+            case 'admin':
+                if (this.currentUser?.user_status === 'admin') {
+                    this.initAdminDashboard();
+                } else {
+                    this.showSection('home');
+                }
+                break;
         }
     }
 
     renderMembers(filteredMembers = null) {
         const container = document.getElementById('memberGrid');
-        const membersToRender = filteredMembers || this.members;
+        const isCatalist = m => ['contributor', 'admin'].includes(m.subscription_tier) || m.user_status === 'admin';
+        const hasPhoto = m => !!(m.avatar && m.avatar.trim());
+        const isBottom = m => isCatalist(m) || m.user_status === 'unverified' || !m.user_status;
+        const membersToRender = (filteredMembers || this.members).slice().sort((a, b) => {
+            const aBottom = isBottom(a) ? 1 : 0;
+            const bBottom = isBottom(b) ? 1 : 0;
+            if (aBottom !== bBottom) return aBottom - bBottom;
+            return (hasPhoto(b) ? 1 : 0) - (hasPhoto(a) ? 1 : 0);
+        });
 
         container.innerHTML = membersToRender.map(member => {
             const tier = member.subscription_tier || 'visitor';
@@ -2062,6 +2505,324 @@ async updateMission(needId) {
                 </div>
             </div>
         `}).join('');
+    }
+
+    // ====================================
+    // ADMIN DASHBOARD
+    // ====================================
+    async initAdminDashboard() {
+        if (!this.currentUser || this.currentUser.user_status !== 'admin') return;
+
+        // Update space status label in header
+        const spaceLabel = document.getElementById('adminDashSpaceLabel');
+        const spaceBtn = document.getElementById('adminDashSpaceBtn');
+        if (spaceLabel && this.spaceIsOpen !== undefined) {
+            spaceLabel.textContent = `Space: ${this.spaceIsOpen ? 'OPEN' : 'CLOSED'}`;
+            if (spaceBtn) spaceBtn.textContent = this.spaceIsOpen ? 'Set Closed' : 'Set Open';
+        }
+
+        // Stats
+        const checkedInCount = (this.checkIns || []).filter(c => c.status === 'in').length;
+        const unverifiedCount = (this.members || []).filter(m => m.user_status === 'unverified').length;
+        const openNeeds = (this.missions || []).filter(m => m.status === 'open').length;
+
+        document.getElementById('admStatMembers').textContent = (this.members || []).length;
+        document.getElementById('admStatCheckedIn').textContent = checkedInCount;
+        document.getElementById('admStatUnverified').textContent = unverifiedCount;
+        document.getElementById('admStatPaintings').textContent = (this.paintings || []).length;
+        document.getElementById('admStatNeeds').textContent = openNeeds;
+
+        // Fetch pending space requests count
+        try {
+            const { data } = await supabase.from('space_requests').select('id').eq('status', 'pending');
+            document.getElementById('admStatPending').textContent = data ? data.length : 0;
+        } catch(e) { document.getElementById('admStatPending').textContent = '?'; }
+
+        // Load default tab
+        this.showAdminTab(this._activeAdminTab || 'checkins');
+    }
+
+    showAdminTab(tabName) {
+        this._activeAdminTab = tabName;
+        document.querySelectorAll('.admin-tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === tabName);
+        });
+        document.querySelectorAll('.admin-tab-panel').forEach(panel => {
+            panel.style.display = 'none';
+        });
+        const panel = document.getElementById(`adminTab-${tabName}`);
+        if (panel) panel.style.display = 'block';
+
+        switch(tabName) {
+            case 'checkins': this.renderDashCheckins(); break;
+            case 'requests': this.renderDashRequests(); break;
+            case 'members':  this.renderDashMembers();  break;
+            case 'gallery':  this.renderDashGallery();  break;
+            case 'feedback': this.renderDashFeedback(); break;
+        }
+    }
+
+    async renderDashCheckins() {
+        await this.loadCheckInStatuses();
+
+        const statuses = this.checkInStatuses || [];
+        const inCount  = statuses.filter(s => s.status === 'in').length;
+        const outCount = statuses.filter(s => s.status !== 'in').length;
+        document.getElementById('dashTotalIn').textContent  = inCount;
+        document.getElementById('dashTotalOut').textContent = outCount;
+
+        this._dashCheckinFilter = this._dashCheckinFilter || 'all';
+        this._renderDashCheckinList();
+
+        if (this._dashActivityOffset === undefined) this._dashActivityOffset = 0;
+        await this._renderDashActivityLog();
+
+        const prevBtn = document.getElementById('dashActivityPrev');
+        const nextBtn = document.getElementById('dashActivityNext');
+        if (prevBtn) prevBtn.onclick = async () => { this._dashActivityOffset--; await this._renderDashActivityLog(); };
+        if (nextBtn) nextBtn.onclick = async () => { if (this._dashActivityOffset < 0) { this._dashActivityOffset++; await this._renderDashActivityLog(); } };
+    }
+
+    setDashCheckinFilter(filter) {
+        this._dashCheckinFilter = filter;
+        document.querySelectorAll('#adminTab-checkins .filter-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.filter === filter);
+        });
+        this._renderDashCheckinList();
+    }
+
+    _renderDashCheckinList() {
+        const container = document.getElementById('dashCheckinList');
+        if (!container) return;
+        const filter = this._dashCheckinFilter || 'all';
+
+        const membersWithStatus = (this.members || []).map(member => {
+            const s = (this.checkInStatuses || []).find(s => s.user_id === member.id);
+            return { ...member, checkInStatus: s?.status || 'out', lastUpdate: s?.timestamp || null };
+        });
+
+        let filtered = membersWithStatus;
+        if (filter === 'in')  filtered = membersWithStatus.filter(m => m.checkInStatus === 'in');
+        if (filter === 'out') filtered = membersWithStatus.filter(m => m.checkInStatus !== 'in');
+
+        filtered.sort((a, b) => {
+            if (a.checkInStatus === 'in' && b.checkInStatus !== 'in') return -1;
+            if (a.checkInStatus !== 'in' && b.checkInStatus === 'in') return 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        if (filtered.length === 0) { container.innerHTML = '<p class="empty-state">No members to show.</p>'; return; }
+        container.innerHTML = filtered.map(member => {
+            const timeAgo = member.lastUpdate ? this.getTimeAgo(new Date(member.lastUpdate)) : 'Never';
+            return `
+            <div class="admin-checkin-item ${member.checkInStatus === 'in' ? 'status-in' : 'status-out'}">
+                <div class="checkin-item-info">
+                    <div class="checkin-item-header">
+                        <h4>${member.name}</h4>
+                        <span class="checkin-status-badge status-${member.checkInStatus}">
+                            ${member.checkInStatus === 'in' ? '● IN' : '○ OUT'}
+                        </span>
+                    </div>
+                    <p class="checkin-time">Last update: ${timeAgo}</p>
+                </div>
+                <div class="checkin-item-actions">
+                    <button class="btn btn-outline btn-sm" onclick="app.adminSetStatus('${member.id}','in')">Set IN</button>
+                    <button class="btn btn-outline btn-sm" onclick="app.adminSetStatus('${member.id}','out')">Set OUT</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async _renderDashActivityLog() {
+        const offset = this._dashActivityOffset || 0;
+        const { start, end } = this.getWeekRange(offset);
+
+        const labelEl = document.getElementById('dashActivityWeekLabel');
+        const opts = { month: 'short', day: 'numeric' };
+        if (labelEl) labelEl.textContent = `${start.toLocaleDateString('en-US', opts)} – ${end.toLocaleDateString('en-US', opts)}`;
+
+        const nextBtn = document.getElementById('dashActivityNext');
+        if (nextBtn) { nextBtn.disabled = offset >= 0; nextBtn.style.opacity = offset >= 0 ? '0.4' : '1'; }
+
+        const summaryEl = document.getElementById('dashActivitySummary');
+        const gridEl   = document.getElementById('dashActivityGrid');
+        if (!summaryEl || !gridEl) return;
+
+        try {
+            const { data, error } = await supabase
+                .from('check_ins').select('*')
+                .gte('timestamp', start.toISOString())
+                .lte('timestamp', end.toISOString())
+                .order('timestamp', { ascending: true });
+            if (error) throw error;
+
+            const entries = data || [];
+            const memberMap = {};
+            (this.members || []).forEach(m => { memberMap[m.id] = m.name; });
+
+            const totalEvents  = entries.length;
+            const checkIns     = entries.filter(e => e.status === 'in').length;
+            const checkOuts    = entries.filter(e => e.status === 'out').length;
+            const uniqueMembers = new Set(entries.map(e => e.user_id)).size;
+
+            summaryEl.innerHTML = `
+                <div class="activity-summary-stat"><span class="stat-number">${totalEvents}</span><span class="stat-label">Total Events</span></div>
+                <div class="activity-summary-stat"><span class="stat-number">${checkIns}</span><span class="stat-label">Check Ins</span></div>
+                <div class="activity-summary-stat"><span class="stat-number">${checkOuts}</span><span class="stat-label">Check Outs</span></div>
+                <div class="activity-summary-stat"><span class="stat-number">${uniqueMembers}</span><span class="stat-label">Unique Members</span></div>`;
+
+            const dayBuckets = {};
+            for (let i = 0; i < 7; i++) {
+                const d = new Date(start); d.setDate(start.getDate() + i);
+                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                dayBuckets[key] = [];
+            }
+            entries.forEach(entry => {
+                const d = new Date(entry.timestamp);
+                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                if (dayBuckets[key]) dayBuckets[key].push(entry);
+            });
+
+            const now = new Date();
+            const today = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+            const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+            gridEl.innerHTML = Object.keys(dayBuckets).map(dateKey => {
+                const d = new Date(dateKey + 'T12:00:00');
+                const isToday = dateKey === today;
+                const dayEntries = dayBuckets[dateKey];
+                const entriesHTML = dayEntries.length === 0
+                    ? '<div class="activity-day-empty">—</div>'
+                    : dayEntries.map(entry => {
+                        const time = new Date(entry.timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+                        const name = memberMap[entry.user_id] || 'Unknown';
+                        const isIn = entry.status === 'in';
+                        return `<div class="activity-entry">
+                            <span class="activity-dot ${isIn ? 'dot-in' : 'dot-out'}">${isIn ? '●' : '○'}</span>
+                            <div class="activity-entry-info">
+                                <div class="activity-entry-name">${name}</div>
+                                <div class="activity-entry-time">${isIn ? 'IN' : 'OUT'} · ${time}</div>
+                            </div>
+                        </div>`;
+                    }).join('');
+                return `<div class="activity-day ${isToday ? 'today' : ''}">
+                    <div class="activity-day-header"><span>${dayNames[d.getDay()]}</span><span class="activity-day-date">${d.getDate()}</span></div>
+                    <div class="activity-day-entries">${entriesHTML}</div>
+                </div>`;
+            }).join('');
+        } catch(e) { console.error('Dash activity log error:', e); }
+    }
+
+    async renderDashRequests() {
+        const container = document.getElementById('dashRequestsList');
+        container.innerHTML = '<p class="empty-state">Loading...</p>';
+        try {
+            const { data, error } = await supabase.from('space_requests').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            if (!data || data.length === 0) { container.innerHTML = '<p class="empty-state">No space requests yet.</p>'; return; }
+            container.innerHTML = data.map(req => {
+                const dateStr = new Date(req.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+                const submittedStr = new Date(req.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+                const types = Array.isArray(req.use_types) ? req.use_types.join(' · ') : req.use_types;
+                return `
+                <div class="space-request-item" id="dash-req-${req.id}">
+                    <div class="space-request-meta">
+                        <div>
+                            <div class="space-request-title">${req.title}</div>
+                            <div style="font-size:0.8rem;color:#555;margin-top:0.2rem;">${types || ''}</div>
+                        </div>
+                        <div class="space-request-badges">
+                            <span class="request-badge status-${req.status}" id="dash-req-badge-${req.id}">${req.status}</span>
+                            <span class="request-badge">$${req.contribution}</span>
+                        </div>
+                    </div>
+                    <div class="space-request-details">
+                        <strong>${dateStr}</strong> · ${req.start_time} – ${req.end_time} · ${req.headcount} people<br>
+                        <strong>From:</strong> ${req.user_name} (${req.user_email})<br>
+                        <strong>Contact:</strong> ${req.contact || '—'}<br>
+                        <strong>Equipment:</strong> ${req.equipment || '—'}<br>
+                        ${req.description || ''}<br>
+                        ${req.special_needs ? `<em>Special needs: ${req.special_needs}</em><br>` : ''}
+                        <span style="color:#999;font-size:0.78rem;">Submitted ${submittedStr}</span>
+                    </div>
+                    <div class="space-request-actions">
+                        <button class="btn btn-primary btn-sm" onclick="app.updateRequestStatus('${req.id}','approved');document.getElementById('dash-req-badge-${req.id}').className='request-badge status-approved';document.getElementById('dash-req-badge-${req.id}').textContent='approved'">Approve</button>
+                        <button class="btn btn-outline btn-sm" onclick="app.updateRequestStatus('${req.id}','declined');document.getElementById('dash-req-badge-${req.id}').className='request-badge status-declined';document.getElementById('dash-req-badge-${req.id}').textContent='declined'">Decline</button>
+                        <button class="btn btn-outline btn-sm" onclick="app.updateRequestStatus('${req.id}','pending');document.getElementById('dash-req-badge-${req.id}').className='request-badge status-pending';document.getElementById('dash-req-badge-${req.id}').textContent='pending'">Reset</button>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch(e) { container.innerHTML = '<p class="empty-state">Could not load requests.</p>'; }
+    }
+
+    renderDashMembers() {
+        const container = document.getElementById('dashMembersList');
+        if (!this.members || this.members.length === 0) { container.innerHTML = '<p class="empty-state">No members yet.</p>'; return; }
+        container.innerHTML = this.members.map(m => {
+            const tier = m.subscription_tier || 'visitor';
+            const tierLabel = this.getTierDisplayName(tier);
+            return `
+            <div class="dash-member-row">
+                <div class="dash-member-avatar">
+                    ${m.avatar ? `<img src="${m.avatar}" alt="${m.name}">` : '<div class="avatar-placeholder" style="width:40px;height:40px;font-size:0.6rem;">Photo</div>'}
+                </div>
+                <div class="dash-member-info">
+                    <strong>${m.name}</strong>
+                    <span class="member-tier-badge tier-${tier}" style="font-size:0.65rem;padding:0.15rem 0.5rem;">${tierLabel}</span>
+                    <span style="font-size:0.75rem;color:#555;">${m.email || ''}</span>
+                </div>
+                <div class="dash-member-status">
+                    <span class="status-badge" style="font-size:0.7rem;${m.user_status === 'verified' ? 'background:#000;color:#fff;' : m.user_status === 'admin' ? 'background:var(--accent);color:#000;' : 'background:#666;color:#fff;'}">${m.user_status}</span>
+                </div>
+                <div class="dash-member-actions">
+                    ${this.currentUser.id !== m.id ? `
+                        <button class="btn btn-outline btn-sm" onclick="app.toggleVerification('${m.id}','${m.user_status}');setTimeout(()=>app.renderDashMembers(),500)">${m.user_status === 'verified' ? 'Unverify' : 'Verify'}</button>
+                        <button class="btn btn-outline btn-sm" style="background:#000;color:#fff;" onclick="app.deleteMember('${m.id}')">Delete</button>
+                    ` : '<span style="font-size:0.75rem;color:#999;">You</span>'}
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    renderDashGallery() {
+        const container = document.getElementById('dashGalleryList');
+        if (!this.paintings || this.paintings.length === 0) { container.innerHTML = '<p class="empty-state">No paintings yet. Add one above.</p>'; return; }
+        container.innerHTML = this.paintings.map(p => {
+            const status = p.sale_status || (p.available ? 'for_sale' : 'sold');
+            const statusLabels = { for_sale: `$${parseFloat(p.price||0).toFixed(2)}`, for_trade: 'For Trade', not_for_sale: 'Not for Sale', sold: 'Sold' };
+            return `
+            <div class="dash-gallery-row">
+                <img src="${p.image_url}" alt="${p.title}" style="width:60px;height:60px;object-fit:cover;border:2px solid #000;">
+                <div class="dash-gallery-info">
+                    <strong>${p.title}</strong>
+                    <span style="font-size:0.8rem;color:#555;">by ${p.artist_name}</span>
+                </div>
+                <div style="font-size:0.85rem;font-weight:700;">${statusLabels[status] || status}</div>
+                <div class="dash-member-actions">
+                    <button class="btn btn-outline btn-sm" onclick="app.editPainting('${p.id}')">Edit</button>
+                    <button class="btn btn-outline btn-sm" style="background:#000;color:#fff;" onclick="app.deletePainting('${p.id}')">Delete</button>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    async renderDashFeedback() {
+        const container = document.getElementById('dashFeedbackList');
+        container.innerHTML = '<p class="empty-state">Loading...</p>';
+        try {
+            const { data, error } = await supabase.from('feedback').select('*').order('created_at', { ascending: false });
+            if (error) throw error;
+            if (!data || data.length === 0) { container.innerHTML = '<p class="empty-state">No feedback yet.</p>'; return; }
+            container.innerHTML = data.map(item => `
+                <div class="feedback-item">
+                    <div class="feedback-item-header">
+                        <span class="feedback-item-name">${item.name || 'Anonymous'}</span>
+                        <span class="feedback-item-type">${item.type || 'general'}</span>
+                    </div>
+                    <p class="feedback-item-message">${item.message}</p>
+                    <span class="feedback-item-date">${new Date(item.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                </div>`).join('');
+        } catch(e) { container.innerHTML = '<p class="empty-state">Could not load feedback.</p>'; }
     }
 
     renderFeaturedMembers() {
@@ -2262,6 +3023,128 @@ async updateMission(needId) {
         }).join('');
     }
 
+    buildGoogleCalendarUrl(event) {
+        const fmt = (d) => d.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+        const fmtDate = (d) => d.toISOString().split('T')[0].replace(/-/g, '');
+        const isAllDay = !event.start.dateTime;
+        const start = isAllDay ? new Date(event.start.date + 'T00:00:00') : new Date(event.start.dateTime);
+        const end = event.end
+            ? (isAllDay ? new Date(event.end.date + 'T00:00:00') : new Date(event.end.dateTime))
+            : new Date(start.getTime() + 60 * 60 * 1000);
+        const dates = isAllDay ? `${fmtDate(start)}/${fmtDate(end)}` : `${fmt(start)}/${fmt(end)}`;
+        const params = new URLSearchParams({
+            action: 'TEMPLATE',
+            text: event.summary || 'Event',
+            dates,
+            ...(event.description ? { details: event.description } : {}),
+            ...(event.location ? { location: event.location } : {}),
+        });
+        return `https://www.google.com/calendar/render?${params.toString()}`;
+    }
+
+    async fetchUserRsvps() {
+        if (!this.currentUser) { this.userRsvps = new Set(); return; }
+        try {
+            const { data, error } = await supabase
+                .from('event_rsvps')
+                .select('google_event_id')
+                .eq('user_id', this.currentUser.id);
+            if (error) throw error;
+            this.userRsvps = new Set((data || []).map(r => r.google_event_id));
+        } catch (e) {
+            console.error('fetchUserRsvps error:', e);
+            this.userRsvps = new Set();
+        }
+    }
+
+    async toggleRsvp(googleEventId, eventTitle, eventDate) {
+        if (!this.currentUser) return;
+        const alreadyRsvpd = this.userRsvps.has(googleEventId);
+        try {
+            if (alreadyRsvpd) {
+                const { error } = await supabase
+                    .from('event_rsvps')
+                    .delete()
+                    .eq('google_event_id', googleEventId)
+                    .eq('user_id', this.currentUser.id);
+                if (error) throw error;
+                this.userRsvps.delete(googleEventId);
+            } else {
+                const { error } = await supabase
+                    .from('event_rsvps')
+                    .insert({ google_event_id: googleEventId, event_title: eventTitle, event_date: eventDate, user_id: this.currentUser.id });
+                if (error) throw error;
+                this.userRsvps.add(googleEventId);
+            }
+            // Refresh all RSVP button states on the page
+            document.querySelectorAll(`[data-rsvp-event="${googleEventId}"]`).forEach(btn => {
+                const nowRsvpd = this.userRsvps.has(googleEventId);
+                btn.textContent = nowRsvpd ? '✓ RSVP\'d' : 'RSVP';
+                btn.classList.toggle('rsvpd', nowRsvpd);
+            });
+            // Refresh admin panel if visible
+            if (this.currentUser.user_status === 'admin') this.renderAdminRsvpPanel();
+        } catch (e) {
+            console.error('toggleRsvp error:', e);
+            this.showAlert('Could not update RSVP. Please try again.', 'error');
+        }
+    }
+
+    async renderAdminRsvpPanel() {
+        const container = document.getElementById('adminRsvpPanel');
+        if (!container) return;
+        container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+        try {
+            // Fetch RSVPs
+            const { data: rsvps, error } = await supabase
+                .from('event_rsvps')
+                .select('google_event_id, event_title, event_date, user_id, guest_name')
+                .order('event_date', { ascending: true });
+            if (error) throw error;
+            if (!rsvps || rsvps.length === 0) {
+                container.innerHTML = '<p class="empty-state">No RSVPs yet.</p>';
+                return;
+            }
+            // Fetch profiles for logged-in RSVPs only
+            const userIds = [...new Set(rsvps.filter(r => r.user_id).map(r => r.user_id))];
+            const profileMap = {};
+            if (userIds.length) {
+                const { data: profiles } = await supabase
+                    .from('profiles')
+                    .select('id, name, email')
+                    .in('id', userIds);
+                (profiles || []).forEach(p => { profileMap[p.id] = p; });
+            }
+
+            // Group by event
+            const grouped = {};
+            rsvps.forEach(r => {
+                const key = r.google_event_id;
+                if (!grouped[key]) grouped[key] = { title: r.event_title, date: r.event_date, attendees: [] };
+                if (r.guest_name) {
+                    grouped[key].attendees.push({ name: r.guest_name, email: '', guest: true });
+                } else {
+                    grouped[key].attendees.push(profileMap[r.user_id] || { name: 'Unknown', email: '' });
+                }
+            });
+            container.innerHTML = Object.values(grouped).map(ev => `
+                <div class="rsvp-event-group">
+                    <div class="rsvp-event-header">
+                        <strong>${ev.title || 'Untitled Event'}</strong>
+                        <span class="rsvp-count">${ev.attendees.length} RSVP${ev.attendees.length !== 1 ? 's' : ''}</span>
+                        ${ev.date ? `<span class="rsvp-date">${new Date(ev.date).toLocaleDateString()}</span>` : ''}
+                    </div>
+                    <ul class="rsvp-attendee-list">
+                        ${ev.attendees.map(a => `<li>${a.name}${a.guest ? ' <span class="rsvp-guest-tag">guest</span>' : ''} <span class="rsvp-email">${a.email}</span></li>`).join('')}
+                    </ul>
+                </div>
+            `).join('');
+        } catch (e) {
+            console.error('renderAdminRsvpPanel error:', e);
+            container.innerHTML = '<p class="empty-state">Failed to load RSVPs.</p>';
+        }
+    }
+
     async renderUpcomingEventsHome() {
         const container = document.getElementById('upcomingEvents');
         if (!container) {
@@ -2273,52 +3156,62 @@ async updateMission(needId) {
         container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
         
         try {
-            const googleEvents = await this.fetchGoogleCalendarEvents();
+            const [googleEvents] = await Promise.all([
+                this.fetchGoogleCalendarEvents(),
+                this.loadEventSettings()
+            ]);
             console.log('Google events fetched:', googleEvents.length);
-            
+
             if (googleEvents.length === 0) {
-                console.log('No events found');
                 container.innerHTML = '<p class="empty-state">No upcoming events</p>';
                 return;
             }
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            
+            const isAdmin = this.currentUser?.user_status === 'admin';
+
             const eventsHTML = googleEvents.slice(0, 6).map(event => {
                 const eventDate = event.start.dateTime ? new Date(event.start.dateTime) : new Date(event.start.date + 'T00:00:00');
                 const eventDateMidnight = new Date(eventDate);
                 eventDateMidnight.setHours(0, 0, 0, 0);
                 const daysUntil = Math.round((eventDateMidnight - today) / (1000 * 60 * 60 * 24));
                 const dayLabel = daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`;
+                const isPrivate = this.eventSettings?.[event.id]?.is_private || false;
+
+                if (isPrivate && !isAdmin && !this.currentUser) return '';
+
+                const safeTitle = (event.summary || 'Untitled Event').replace(/'/g, "\\'");
+                const safeDateStr = eventDate.toISOString().split('T')[0];
 
                 return `
-                    <div class="event-card">
-                        <span class="event-day-label">${dayLabel}</span>
-                        <div class="event-header">
-                            <h4 class="event-title">${event.summary || 'Untitled Event'}</h4>
-                        </div>
-                        <div class="event-details">
-                            <div class="event-detail">
-                                <strong>Date:</strong> ${eventDate.toLocaleDateString()}
-                            </div>
-                            ${event.start.dateTime ? `<div class="event-detail"><strong>Time:</strong> ${new Date(event.start.dateTime).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>` : ''}
-                            ${event.location ? `<div class="event-detail"><strong>Location:</strong> ${event.location}</div>` : ''}
-                        </div>
-                        ${event.description ? `<p class="event-description">${event.description.substring(0, 100)}${event.description.length > 100 ? '...' : ''}</p>` : ''}
-                        <button class="btn btn-outline" onclick="app.showSection('calendar')" style="margin-top: auto;">View All Events</button>
+                <div class="event-card ${isPrivate ? 'event-card-private' : ''}" onclick="app.openEventDetail('${event.id}')" style="cursor:pointer;">
+                    ${isPrivate ? '<div class="event-private-overlay">PRIVATE</div>' : ''}
+                    <span class="event-day-label">${dayLabel}</span>
+                    <div class="event-header">
+                        <h4 class="event-title">${event.summary || 'Untitled Event'}</h4>
                     </div>
-                `;
-            }).join('');
-            
-            // Create a wrapper div with proper grid styling
+                    <div class="event-details">
+                        <div class="event-detail"><strong>Date:</strong> ${eventDate.toLocaleDateString()}</div>
+                        ${event.start.dateTime ? `<div class="event-detail"><strong>Time:</strong> ${new Date(event.start.dateTime).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>` : ''}
+                        ${event.location ? `<div class="event-detail"><strong>Location:</strong> ${event.location}</div>` : ''}
+                    </div>
+                    ${event.description ? `<p class="event-description">${event.description.substring(0, 100)}${event.description.length > 100 ? '...' : ''}</p>` : ''}
+                    <div class="event-card-actions">
+                        <button class="btn btn-outline" onclick="event.stopPropagation(); app.openEventDetail('${event.id}')" style="margin-top:auto;">View Details</button>
+                        ${this.currentUser ? `
+                        <button class="btn-rsvp-action ${this.userRsvps.has(event.id) ? 'rsvpd' : ''}" data-rsvp-event="${event.id}" onclick="event.stopPropagation(); app.toggleRsvp('${event.id}','${safeTitle}','${safeDateStr}')">${this.userRsvps.has(event.id) ? "✓ RSVP'd" : 'RSVP'}</button>
+                        <a href="${this.buildGoogleCalendarUrl(event)}" target="_blank" class="btn-rsvp" onclick="event.stopPropagation()">+ Add to Calendar</a>` : ''}
+                        ${isAdmin ? `<button class="btn btn-outline btn-sm event-privacy-btn" onclick="event.stopPropagation(); app.toggleEventPrivacyHome('${event.id}', ${isPrivate})">${isPrivate ? '🔓 Make Public' : '🔒 Set Private'}</button>` : ''}
+                    </div>
+                </div>`;
+            }).filter(Boolean).join('');
+
             const wrapper = document.createElement('div');
-            wrapper.className = 'events-grid';
-            wrapper.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            wrapper.className = 'events-scroll-row';
             wrapper.innerHTML = eventsHTML;
             container.innerHTML = '';
             container.appendChild(wrapper);
-            
             console.log('Events rendered successfully');
         } catch (error) {
             console.error('Render events error:', error);
@@ -2329,55 +3222,70 @@ async updateMission(needId) {
     async renderUpcomingWeekEvents() {
         const container = document.getElementById('upcomingWeekEvents');
         if (!container) return;
-        
+
         container.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-        
+
         try {
-            const googleEvents = await this.fetchGoogleCalendarEvents();
-            
+            const [googleEvents] = await Promise.all([
+                this.fetchMonthEvents(),
+                this.loadEventSettings()
+            ]);
+
             if (googleEvents.length === 0) {
-                container.innerHTML = '<p class="empty-state">No events in the next 7 days</p>';
+                container.innerHTML = '<p class="empty-state">No upcoming events this month</p>';
                 return;
             }
 
             const today = new Date();
             today.setHours(0, 0, 0, 0);
-            
+            const nextWeekCutoff = new Date(today);
+            nextWeekCutoff.setDate(today.getDate() + 30);
+
+            const isAdmin = this.currentUser?.user_status === 'admin';
+
             const eventsHTML = googleEvents.map(event => {
                 const eventDate = event.start.dateTime ? new Date(event.start.dateTime) : new Date(event.start.date + 'T00:00:00');
                 const eventDateMidnight = new Date(eventDate);
                 eventDateMidnight.setHours(0, 0, 0, 0);
                 const daysUntil = Math.round((eventDateMidnight - today) / (1000 * 60 * 60 * 24));
                 const dayLabel = daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`;
+                const isFuture = eventDateMidnight >= nextWeekCutoff;
+                const isPrivate = this.eventSettings?.[event.id]?.is_private || false;
+
+                // Non-admins skip private events entirely
+                if (isPrivate && !isAdmin && !this.currentUser) return '';
+
+                const safeTitle = (event.summary || 'Untitled Event').replace(/'/g, "\\'");
+                const safeDateStr = eventDate.toISOString().split('T')[0];
 
                 return `
-                    <div class="event-card">
-                        <span class="event-day-label">${dayLabel}</span>
-                        <div class="event-header">
-                            <h4 class="event-title">${event.summary || 'Untitled Event'}</h4>
-                        </div>
-                        <div class="event-details">
-                            <div class="event-detail">
-                                <strong>Date:</strong> ${eventDate.toLocaleDateString()}
-                            </div>
-                            ${event.start.dateTime ? `<div class="event-detail"><strong>Time:</strong> ${new Date(event.start.dateTime).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>` : ''}
-                            ${event.location ? `<div class="event-detail"><strong>Location:</strong> ${event.location}</div>` : ''}
-                        </div>
-                        ${event.description ? `<p class="event-description">${event.description.substring(0, 100)}${event.description.length > 100 ? '...' : ''}</p>` : ''}
-                        ${event.htmlLink ? `<a href="${event.htmlLink}" target="_blank" class="btn btn-outline" style="margin-top: auto;">View Details</a>` : ''}
+                <div class="event-card ${isFuture ? 'event-card-future' : ''} ${isPrivate ? 'event-card-private' : ''}" onclick="app.openEventDetail('${event.id}')" style="cursor:pointer;">
+                    ${isPrivate ? '<div class="event-private-overlay">PRIVATE</div>' : ''}
+                    <span class="event-day-label">${dayLabel}</span>
+                    <div class="event-header">
+                        <h4 class="event-title">${event.summary || 'Untitled Event'}</h4>
                     </div>
-                `;
-            }).join('');
-            
-            // Create a wrapper div with proper grid styling (same as home page)
+                    <div class="event-details">
+                        <div class="event-detail"><strong>Date:</strong> ${eventDate.toLocaleDateString()}</div>
+                        ${event.start.dateTime ? `<div class="event-detail"><strong>Time:</strong> ${new Date(event.start.dateTime).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'})}</div>` : ''}
+                        ${event.location ? `<div class="event-detail"><strong>Location:</strong> ${event.location}</div>` : ''}
+                    </div>
+                    ${event.description ? `<p class="event-description">${event.description.substring(0, 100)}${event.description.length > 100 ? '...' : ''}</p>` : ''}
+                    <div class="event-card-actions">
+                        <button class="btn btn-outline" onclick="event.stopPropagation(); app.openEventDetail('${event.id}')" style="margin-top:auto;">View Details</button>
+                        ${this.currentUser ? `
+                        <button class="btn-rsvp-action ${this.userRsvps.has(event.id) ? 'rsvpd' : ''}" data-rsvp-event="${event.id}" onclick="event.stopPropagation(); app.toggleRsvp('${event.id}','${safeTitle}','${safeDateStr}')">${this.userRsvps.has(event.id) ? "✓ RSVP'd" : 'RSVP'}</button>
+                        <a href="${this.buildGoogleCalendarUrl(event)}" target="_blank" class="btn-rsvp" onclick="event.stopPropagation()">+ Add to Calendar</a>` : ''}
+                        ${isAdmin ? `<button class="btn btn-outline btn-sm event-privacy-btn" onclick="event.stopPropagation(); app.toggleEventPrivacy('${event.id}', ${isPrivate})">${isPrivate ? '🔓 Make Public' : '🔒 Set Private'}</button>` : ''}
+                    </div>
+                </div>`;
+            }).filter(Boolean).join('');
+
             const wrapper = document.createElement('div');
-            wrapper.className = 'events-grid';
-            wrapper.style.gridTemplateColumns = 'repeat(3, 1fr)';
+            wrapper.className = 'events-scroll-row';
             wrapper.innerHTML = eventsHTML;
             container.innerHTML = '';
             container.appendChild(wrapper);
-            
-            console.log('Calendar events rendered successfully');
         } catch (error) {
             container.innerHTML = '<p class="empty-state">Failed to load events</p>';
             console.error(error);
@@ -2721,19 +3629,28 @@ async updateMission(needId) {
         }
     }
 
+    async loadSpaceStatus() {
+        try {
+            const { data, error } = await supabase
+                .from('space_status')
+                .select('is_open')
+                .eq('id', 1)
+                .maybeSingle();
+            if (error) throw error;
+            this.spaceIsOpen = data?.is_open ?? false;
+        } catch (e) {
+            console.warn('loadSpaceStatus error:', e.message);
+            this.spaceIsOpen = false;
+        }
+        this.updateSpaceStatus();
+    }
+
     updateSpaceStatus() {
         const indicator = document.getElementById('spaceStatusIndicator');
         const statusText = document.getElementById('spaceStatusText');
         if (!indicator || !statusText) return;
 
-        // Check if any admin (catalist) members are currently checked in
-        const adminMembers = this.members.filter(m => m.user_status === 'admin');
-        const adminCheckedIn = adminMembers.some(admin => {
-            const status = this.checkInStatuses.find(s => s.user_id === admin.id);
-            return status && status.status === 'in';
-        });
-
-        if (adminCheckedIn) {
+        if (this.spaceIsOpen) {
             indicator.classList.add('is-open');
             indicator.classList.remove('is-closed');
             statusText.textContent = 'OPEN';
@@ -2741,6 +3658,43 @@ async updateMission(needId) {
             indicator.classList.remove('is-open');
             indicator.classList.add('is-closed');
             statusText.textContent = 'CLOSED';
+        }
+
+        // Show admin toggle button only for admins
+        const adminArea = document.getElementById('adminSpaceToggleArea');
+        const adminBtn = document.getElementById('adminToggleSpaceBtn');
+        if (adminArea && adminBtn) {
+            if (this.currentUser?.user_status === 'admin') {
+                adminArea.style.display = 'block';
+                adminBtn.textContent = this.spaceIsOpen ? 'Set Space Closed' : 'Set Space Open';
+                adminBtn.classList.toggle('space-is-open', this.spaceIsOpen);
+            } else {
+                adminArea.style.display = 'none';
+            }
+        }
+    }
+
+    async toggleSpaceStatus() {
+        if (!this.currentUser || this.currentUser.user_status !== 'admin') return;
+
+        const newStatus = !this.spaceIsOpen;
+        try {
+            const { error } = await supabase
+                .from('space_status')
+                .update({ is_open: newStatus, updated_at: new Date().toISOString(), updated_by: this.currentUser.id })
+                .eq('id', 1);
+            if (error) throw error;
+            this.spaceIsOpen = newStatus;
+            this.updateSpaceStatus();
+            // Sync dashboard toggle label if visible
+            const dashLabel = document.getElementById('adminDashSpaceLabel');
+            const dashBtn = document.getElementById('adminDashSpaceBtn');
+            if (dashLabel) dashLabel.textContent = `Space: ${newStatus ? 'OPEN' : 'CLOSED'}`;
+            if (dashBtn) dashBtn.textContent = newStatus ? 'Set Closed' : 'Set Open';
+            this.showAlert(`Space set to ${newStatus ? 'OPEN' : 'CLOSED'}`, 'success');
+        } catch (e) {
+            console.error('toggleSpaceStatus error:', e);
+            this.showAlert('Error updating space status: ' + e.message, 'error');
         }
     }
 
@@ -3074,6 +4028,9 @@ async updateMission(needId) {
             this.showAlert(`Status updated to ${status.toUpperCase()}`, 'success');
             await this.loadCheckInStatuses();
             await this.renderAdminCheckInList();
+            // Also refresh dashboard if it's the active section
+            const dashTab = document.getElementById('adminTab-checkins');
+            if (dashTab && dashTab.style.display !== 'none') this._renderDashCheckinList();
         } catch (error) {
             console.error('Admin set status error:', error);
             this.showAlert('Error updating status: ' + error.message, 'error');
@@ -3358,8 +4315,13 @@ async updateMission(needId) {
     }
 
     async createStripeCheckout(tier, price) {
+        if (this.isNativeApp()) {
+            this.showAlert('To subscribe, please visit dom-collective.com in your browser.', 'info');
+            return;
+        }
+
         const paymentLinks = {
-            member: 'https://buy.stripe.com/3cI8wP6Uwc22gpY1FSgnK00',
+            member: 'https://buy.stripe.com/00w8wP6Uw1no3DcacognK04',
             contributor: 'https://buy.stripe.com/eVq9ATceQ6HIddM4S4gnK01'
         };
 
@@ -3371,6 +4333,81 @@ async updateMission(needId) {
 
         this.showAlert('Redirecting to checkout...', 'info');
         window.location.href = link;
+    }
+
+    // ====================================
+    // DONATION SECTION
+    // ====================================
+    initDonateSection() {
+        if (this._donateInitialized) return;
+        this._donateInitialized = true;
+
+        if (this.isNativeApp()) {
+            const section = document.getElementById('donate');
+            if (section) section.innerHTML = `<div style="padding:2rem;text-align:center;"><h3>Support DōM</h3><p>To donate, please visit <strong>dom-collective.com</strong> in your browser.</p></div>`;
+            return;
+        }
+
+        const presetBtns = document.querySelectorAll('.donation-preset-btn');
+        const customInput = document.getElementById('donationCustomAmount');
+        const donateBtn = document.getElementById('donateSumbitBtn');
+
+        presetBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                presetBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                customInput.value = '';
+            });
+        });
+
+        customInput.addEventListener('input', () => {
+            presetBtns.forEach(b => b.classList.remove('active'));
+        });
+
+        donateBtn.addEventListener('click', () => this.submitDonation());
+    }
+
+    async submitDonation() {
+        const activePreset = document.querySelector('.donation-preset-btn.active');
+        const customInput = document.getElementById('donationCustomAmount');
+        const donateBtn = document.getElementById('donateSumbitBtn');
+
+        let amount = 0;
+        if (customInput.value) {
+            amount = parseFloat(customInput.value);
+        } else if (activePreset) {
+            amount = parseFloat(activePreset.dataset.amount);
+        }
+
+        if (!amount || amount < 1) {
+            this.showAlert('Please enter a donation amount of at least $1.', 'error');
+            return;
+        }
+
+        if (amount > 10000) {
+            this.showAlert('For donations over $10,000 please contact us directly.', 'error');
+            return;
+        }
+
+        donateBtn.disabled = true;
+        donateBtn.textContent = 'Redirecting...';
+
+        try {
+            const amountCents = Math.round(amount * 100);
+            const { data, error } = await supabase.functions.invoke('create-donation-checkout', {
+                body: { amount_cents: amountCents }
+            });
+
+            if (error) throw error;
+            if (!data?.url) throw new Error('No checkout URL returned');
+
+            window.location.href = data.url;
+        } catch (err) {
+            console.error('Donation checkout error:', err);
+            this.showAlert('Error starting checkout. Please try again.', 'error');
+            donateBtn.disabled = false;
+            donateBtn.textContent = 'Donate with Stripe';
+        }
     }
 
     async downgradeMembership(tier) {
@@ -3438,7 +4475,7 @@ async updateMission(needId) {
 
             this.currentUser.subscription_tier = tier;
             await this.loadUserSubscription();
-            this.showAlert('Welcome to DōM ' + tier.charAt(0).toUpperCase() + tier.slice(1) + ' membership!', 'success');
+            this.showAlert('Welcome to DōM ' + this.getTierDisplayName(tier) + ' membership!', 'success');
             this.showSection('membership');
 
         } catch (error) {
@@ -3526,13 +4563,290 @@ async updateMission(needId) {
     }
 
     // ====================================
+    // BOOK THE SPACE
+    // ====================================
+    updateContributionDisplay() {
+        const slider = document.getElementById('contributionSlider');
+        const display = document.getElementById('contributionDisplay');
+        const label   = document.getElementById('contributionLabel');
+        if (!slider || !display) return;
+
+        const val = parseInt(slider.value);
+        display.textContent = val >= 300 ? '$300+' : `$${val}`;
+
+        if (val <= 25)       label.textContent = 'Appreciated';
+        else if (val <= 75)  label.textContent = 'Supportive';
+        else if (val <= 150) label.textContent = 'Generous';
+        else if (val <= 225) label.textContent = 'Champion';
+        else                 label.textContent = 'Catalist';
+    }
+
+    loadBookSpaceSection() {
+        if (!this.currentUser) {
+            document.getElementById('bookSpaceForm').style.display = 'none';
+            document.getElementById('bookSpaceLoginPrompt').style.display = 'block';
+            document.getElementById('spaceRequestsAdmin').style.display = 'none';
+            return;
+        }
+
+        // Show form; pre-fill contact from profile
+        document.getElementById('bookSpaceForm').style.display = 'block';
+        document.getElementById('bookSpaceLoginPrompt').style.display = 'none';
+
+        const contactField = document.getElementById('requestContact');
+        if (contactField && !contactField.value) {
+            contactField.value = this.currentUser.contact || this.currentUser.email || '';
+        }
+
+        // Set today as minimum date
+        const dateField = document.getElementById('requestDate');
+        if (dateField) {
+            dateField.min = new Date().toISOString().split('T')[0];
+        }
+
+        // Admin: show all submitted requests
+        const adminPanel = document.getElementById('spaceRequestsAdmin');
+        if (this.currentUser.user_status === 'admin') {
+            adminPanel.style.display = 'block';
+            this.loadSpaceRequests();
+        } else {
+            adminPanel.style.display = 'none';
+        }
+    }
+
+    async submitSpaceRequest(e) {
+        e.preventDefault();
+
+        const useTypes = [...document.querySelectorAll('input[name="useType"]:checked')].map(c => c.value);
+        if (useTypes.length === 0) {
+            this.showAlert('Please select at least one type of use', 'error');
+            return;
+        }
+
+        const title       = document.getElementById('requestTitle').value.trim();
+        const date        = document.getElementById('requestDate').value;
+        const startTime   = document.getElementById('requestStartTime').value;
+        const endTime     = document.getElementById('requestEndTime').value;
+        const headcount   = document.getElementById('requestHeadcount').value;
+        const equipment   = document.getElementById('requestEquipment').value;
+        const description = document.getElementById('requestDescription').value.trim();
+        const special     = document.getElementById('requestSpecialNeeds').value.trim();
+        const contact     = document.getElementById('requestContact').value.trim();
+        const contribution = document.getElementById('contributionSlider').value;
+
+        if (!title || !date || !startTime || !endTime || !headcount || !description || !contact) {
+            this.showAlert('Please fill in all required fields', 'error');
+            return;
+        }
+
+        const submitBtn = document.querySelector('.bookspace-submit-btn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+
+        try {
+            const requestData = {
+                user_id:      this.currentUser.id,
+                user_name:    this.currentUser.name,
+                user_email:   this.currentUser.email,
+                use_types:    useTypes,
+                title:        title,
+                date:         date,
+                start_time:   startTime,
+                end_time:     endTime,
+                headcount:    parseInt(headcount),
+                equipment:    equipment,
+                description:  description,
+                special_needs: special || null,
+                contact:      contact,
+                contribution: parseInt(contribution),
+                status:       'pending',
+                created_at:   new Date().toISOString()
+            };
+
+            const { data, error } = await supabase
+                .from('space_requests')
+                .insert([requestData])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            // Send email notification to admin via EmailJS
+            await this.sendSpaceRequestEmail(requestData);
+
+            document.getElementById('spaceRequestForm').reset();
+            // Re-set min date after reset
+            const dateField = document.getElementById('requestDate');
+            if (dateField) dateField.min = new Date().toISOString().split('T')[0];
+            // Re-set contribution slider display
+            document.getElementById('contributionDisplay').textContent = '$25';
+            document.getElementById('contributionLabel').textContent = 'Appreciated';
+            document.getElementById('contributionSlider').value = 25;
+            // Clear tile selections
+            document.querySelectorAll('.use-type-tile').forEach(t => t.classList.remove('selected'));
+
+            this.showAlert('Request submitted! We\'ll be in touch soon.', 'success');
+        } catch (error) {
+            console.error('Space request error:', error);
+            this.showAlert('Failed to submit request. Please try again.', 'error');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Request';
+        }
+    }
+
+    async sendSpaceRequestEmail(req) {
+        if (!window.emailjs || EMAILJS_PUBLIC_KEY === 'YOUR_EMAILJS_PUBLIC_KEY') {
+            console.warn('EmailJS not configured — skipping email notification');
+            return;
+        }
+
+        try {
+            emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY });
+
+            const dateFormatted = new Date(req.date + 'T12:00:00').toLocaleDateString('en-US', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+
+            await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+                submitter_name:  req.user_name,
+                submitter_email: req.user_email,
+                submitter_contact: req.contact,
+                use_types:       req.use_types.join(', '),
+                session_title:   req.title,
+                date:            dateFormatted,
+                start_time:      req.start_time,
+                end_time:        req.end_time,
+                headcount:       req.headcount,
+                equipment:       req.equipment,
+                description:     req.description,
+                special_needs:   req.special_needs || 'None',
+                contribution:    '$' + req.contribution
+            });
+
+            console.log('✅ Space request email sent');
+        } catch (err) {
+            // Non-fatal: request was already saved to DB
+            console.error('Email notification failed:', err);
+        }
+    }
+
+    async loadSpaceRequests() {
+        const list = document.getElementById('spaceRequestsList');
+        list.innerHTML = '<p class="empty-state">Loading requests...</p>';
+
+        try {
+            const { data, error } = await supabase
+                .from('space_requests')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) throw error;
+
+            if (!data || data.length === 0) {
+                list.innerHTML = '<p class="empty-state" style="padding: 2rem;">No space requests yet.</p>';
+                return;
+            }
+
+            list.innerHTML = data.map(req => {
+                const dateStr = new Date(req.date + 'T12:00:00').toLocaleDateString('en-US', {
+                    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+                });
+                const submittedStr = new Date(req.created_at).toLocaleDateString('en-US', {
+                    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                });
+                const types = Array.isArray(req.use_types) ? req.use_types.join(' · ') : req.use_types;
+
+                return `
+                <div class="space-request-item" id="req-${req.id}">
+                    <div class="space-request-meta">
+                        <div>
+                            <div class="space-request-title">${req.title}</div>
+                            <div style="font-size:0.8rem;color:#555;margin-top:0.2rem;">${types}</div>
+                        </div>
+                        <div class="space-request-badges">
+                            <span class="request-badge status-${req.status}">${req.status}</span>
+                            <span class="request-badge">$${req.contribution}</span>
+                        </div>
+                    </div>
+                    <div class="space-request-details">
+                        <strong>${dateStr}</strong> · ${req.start_time} – ${req.end_time} · ${req.headcount} people<br>
+                        <strong>From:</strong> ${req.user_name} (${req.user_email})<br>
+                        <strong>Contact:</strong> ${req.contact}<br>
+                        <strong>Equipment:</strong> ${req.equipment}<br>
+                        ${req.description}<br>
+                        ${req.special_needs ? `<em>Special needs: ${req.special_needs}</em><br>` : ''}
+                        <span style="color:#999;font-size:0.78rem;">Submitted ${submittedStr}</span>
+                    </div>
+                    <div class="space-request-actions">
+                        <button class="btn btn-primary btn-sm" onclick="app.updateRequestStatus('${req.id}', 'approved')">Approve</button>
+                        <button class="btn btn-outline btn-sm" onclick="app.updateRequestStatus('${req.id}', 'declined')">Decline</button>
+                        <button class="btn btn-outline btn-sm" onclick="app.updateRequestStatus('${req.id}', 'pending')">Reset</button>
+                    </div>
+                </div>`;
+            }).join('');
+        } catch (error) {
+            console.error('Load space requests error:', error);
+            list.innerHTML = '<p class="empty-state" style="padding:2rem;">Could not load requests.</p>';
+        }
+    }
+
+    async updateRequestStatus(requestId, newStatus) {
+        try {
+            const { error } = await supabase
+                .from('space_requests')
+                .update({ status: newStatus })
+                .eq('id', requestId);
+
+            if (error) throw error;
+
+            // Update the badge in-place without full reload
+            const item = document.getElementById(`req-${requestId}`);
+            if (item) {
+                const badge = item.querySelector('.request-badge.status-pending, .request-badge.status-approved, .request-badge.status-declined');
+                if (badge) {
+                    badge.className = `request-badge status-${newStatus}`;
+                    badge.textContent = newStatus;
+                }
+            }
+            this.showAlert(`Request marked as ${newStatus}`, 'success');
+        } catch (error) {
+            console.error('Update request status error:', error);
+            this.showAlert('Failed to update status', 'error');
+        }
+    }
+
+    // ====================================
     // EVENT BINDING
     // ====================================
+    closeMobileMenu() {
+        const mobileNav = document.getElementById('mobileNav');
+        const hamburgerBtn = document.getElementById('hamburgerBtn');
+        if (mobileNav) mobileNav.classList.remove('open');
+        if (hamburgerBtn) hamburgerBtn.innerHTML = '&#9776;';
+    }
+
     bindEvents() {
-        // Navigation (Mobile)
+        // Navigation (Mobile) — close hamburger menu after selection
         document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => this.showSection(e.target.dataset.section));
+            btn.addEventListener('click', (e) => {
+                this.showSection(e.target.dataset.section);
+                this.closeMobileMenu();
+            });
         });
+
+        // Hamburger toggle
+        const hamburgerBtn = document.getElementById('hamburgerBtn');
+        if (hamburgerBtn) {
+            hamburgerBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const mobileNav = document.getElementById('mobileNav');
+                if (mobileNav) {
+                    const isOpen = mobileNav.classList.toggle('open');
+                    hamburgerBtn.innerHTML = isOpen ? '&#10005;' : '&#9776;';
+                }
+            });
+        }
 
         // Desktop Logo click-to-toggle sidebar (keeps menu open until clicked again)
         const logoTrigger = document.getElementById('logoDropdownTrigger');
@@ -3578,18 +4892,15 @@ async updateMission(needId) {
 
         // Authentication
         document.getElementById('authBtn').addEventListener('click', () => {
+            this.closeMobileMenu();
             if (this.currentUser) {
                 this.logout();
             } else {
                 this.showAuthModal();
             }
         });
-        document.getElementById('authForm').addEventListener('submit', (e) => this.handleAuth(e));
         document.getElementById('googleSignInBtn').addEventListener('click', () => this.signInWithGoogle());
-        document.getElementById('authToggleLink').addEventListener('click', (e) => {
-            e.preventDefault();
-            this.toggleAuthMode();
-        });
+        document.getElementById('appleSignInBtn')?.addEventListener('click', () => this.signInWithApple());
 
         // Onboarding
         document.getElementById('onboardingForm').addEventListener('submit', (e) => this.completeOnboarding(e));
@@ -3637,6 +4948,35 @@ async updateMission(needId) {
 
         // Feedback
         document.getElementById('feedbackForm').addEventListener('submit', (e) => this.submitFeedback(e));
+
+        // Book the Space
+        const spaceRequestForm = document.getElementById('spaceRequestForm');
+        if (spaceRequestForm) {
+            spaceRequestForm.addEventListener('submit', (e) => this.submitSpaceRequest(e));
+        }
+
+        // Use-type tile toggle (checkbox UX)
+        document.querySelectorAll('.use-type-tile').forEach(tile => {
+            tile.addEventListener('click', () => {
+                const cb = tile.querySelector('input[type="checkbox"]');
+                // Let the checkbox handle its own state, then sync the visual class
+                setTimeout(() => {
+                    tile.classList.toggle('selected', cb.checked);
+                }, 0);
+            });
+        });
+
+        // Contribution slider live update
+        const slider = document.getElementById('contributionSlider');
+        if (slider) {
+            slider.addEventListener('input', () => this.updateContributionDisplay());
+        }
+
+        // Admin refresh button
+        const refreshRequestsBtn = document.getElementById('refreshRequestsBtn');
+        if (refreshRequestsBtn) {
+            refreshRequestsBtn.addEventListener('click', () => this.loadSpaceRequests());
+        }
 
         // Modal controls
         document.querySelectorAll('.close').forEach(close => {
@@ -3757,11 +5097,31 @@ async updateMission(needId) {
 
         console.log('Rendering', this.paintings.length, 'paintings...');
 
-        container.innerHTML = this.paintings.map(painting => `
+        container.innerHTML = this.paintings.map(painting => {
+            const status = painting.sale_status || (painting.available ? 'for_sale' : 'sold');
+            const overlayHtml = status === 'sold' ? '<div class="painting-sold-overlay">SOLD</div>'
+                : status === 'not_for_sale' ? '<div class="painting-sold-overlay painting-nfs-overlay">NOT FOR SALE</div>'
+                : status === 'for_trade' ? '<div class="painting-sold-overlay painting-trade-overlay">FOR TRADE</div>'
+                : '';
+            const priceHtml = status === 'for_sale'
+                ? `<div class="painting-price"><span class="price-currency">$</span>${parseFloat(painting.price || 0).toFixed(2)}</div>`
+                : status === 'for_trade'
+                ? `<div class="painting-price painting-price-trade">For Trade</div>`
+                : `<div class="painting-price painting-price-nfs">Not for Sale</div>`;
+            const actionHtml = status === 'for_sale'
+                ? (this.currentUser
+                    ? `<button class="btn btn-primary" onclick="event.stopPropagation(); app.openPaintingDetail('${painting.id}')">Purchase</button>`
+                    : `<button class="btn btn-outline" onclick="event.stopPropagation(); app.showAlert('Please login to purchase', 'error'); app.showAuthModal();">Login to Purchase</button>`)
+                : status === 'for_trade'
+                ? `<button class="btn btn-outline" onclick="event.stopPropagation(); app.openPaintingDetail('${painting.id}')">Inquire</button>`
+                : status === 'sold'
+                ? `<button class="btn btn-outline" disabled>Sold</button>`
+                : `<button class="btn btn-outline" disabled>Not for Sale</button>`;
+            return `
             <div class="painting-card fade-in" style="cursor:pointer;" onclick="app.openPaintingDetail('${painting.id}')">
                 <div class="painting-image-container">
                     <img src="${painting.image_url}" alt="${painting.title}">
-                    ${!painting.available ? '<div class="painting-sold-overlay">SOLD</div>' : ''}
+                    ${overlayHtml}
                 </div>
                 <div class="painting-info">
                     <div class="painting-header">
@@ -3770,27 +5130,17 @@ async updateMission(needId) {
                     </div>
                     ${painting.description ? `<p class="painting-description">${painting.description}</p>` : ''}
                     ${painting.artist_credit ? `<div class="painting-credit">${painting.artist_credit}</div>` : ''}
-                    <div class="painting-price">
-                        <span class="price-currency">$</span>${parseFloat(painting.price).toFixed(2)}
-                    </div>
-                    <div class="painting-actions">
-                        ${painting.available && this.currentUser ?
-                            `<button class="btn btn-primary" onclick="event.stopPropagation(); app.openPaintingDetail('${painting.id}')">Purchase</button>` :
-                            painting.available ?
-                            `<button class="btn btn-outline" onclick="event.stopPropagation(); app.showAlert('Please login to purchase', 'error'); app.showAuthModal();">Login to Purchase</button>` :
-                            `<button class="btn btn-outline" disabled>Sold</button>`
-                        }
-                    </div>
+                    ${priceHtml}
+                    <div class="painting-actions">${actionHtml}</div>
                     ${this.currentUser?.user_status === 'admin' ? `
                         <div class="painting-admin-actions">
                             <button class="btn btn-outline" onclick="event.stopPropagation(); app.editPainting('${painting.id}')">Edit</button>
-                            <button class="btn btn-outline" onclick="event.stopPropagation(); app.togglePaintingAvailability('${painting.id}', ${painting.available})">${painting.available ? 'Mark Sold' : 'Mark Available'}</button>
                             <button class="btn btn-outline" onclick="event.stopPropagation(); app.deletePainting('${painting.id}')" style="background: #000; color: #fff;">Delete</button>
                         </div>
                     ` : ''}
                 </div>
-            </div>
-        `).join('');
+            </div>`;
+        }).join('');
     }
 
     showAddPaintingModal() {
@@ -3826,6 +5176,15 @@ async updateMission(needId) {
         if (fileInput) {
             fileInput.addEventListener('change', (e) => this.handlePaintingImageSelect(e));
         }
+
+        // Toggle price field based on sale status
+        const statusSelect = newForm.querySelector('#paintingSaleStatus');
+        const priceGroup = document.getElementById('paintingPriceGroup');
+        const togglePriceField = () => {
+            priceGroup.style.display = statusSelect.value === 'for_sale' ? 'block' : 'none';
+        };
+        statusSelect.addEventListener('change', togglePriceField);
+        togglePriceField();
 
         document.getElementById('paintingModal').classList.add('active');
     }
@@ -3925,14 +5284,18 @@ async updateMission(needId) {
             submitBtn.textContent = 'Adding...';
         }
 
+        const saleStatus = document.getElementById('paintingSaleStatus').value;
         const paintingData = {
             title: document.getElementById('paintingTitle').value,
             artist_name: document.getElementById('paintingArtist').value,
             artist_credit: document.getElementById('paintingCredit').value || null,
             description: document.getElementById('paintingDescription').value || null,
-            price: parseFloat(document.getElementById('paintingPrice').value),
+            price: saleStatus === 'for_sale' ? parseFloat(document.getElementById('paintingPrice').value) || 0 : 0,
+            sale_status: saleStatus,
+            date_created: document.getElementById('paintingDateCreated').value || null,
+            date_adopted: document.getElementById('paintingDateAdopted').value || null,
             image_url: imageUrl,
-            available: true,
+            available: saleStatus === 'for_sale',
             created_by: this.currentUser.id
         };
 
@@ -3975,7 +5338,16 @@ async updateMission(needId) {
         document.getElementById('paintingArtist').value = painting.artist_name;
         document.getElementById('paintingCredit').value = painting.artist_credit || '';
         document.getElementById('paintingDescription').value = painting.description || '';
-        document.getElementById('paintingPrice').value = painting.price;
+        const editStatus = painting.sale_status || (painting.available ? 'for_sale' : 'sold');
+        document.getElementById('paintingSaleStatus').value = editStatus;
+        document.getElementById('paintingPrice').value = painting.price || '';
+        document.getElementById('paintingPriceGroup').style.display = editStatus === 'for_sale' ? 'block' : 'none';
+        document.getElementById('paintingDateCreated').value = painting.date_created || '';
+        document.getElementById('paintingDateAdopted').value = painting.date_adopted || '';
+        document.getElementById('paintingSaleStatus').onchange = () => {
+            document.getElementById('paintingPriceGroup').style.display =
+                document.getElementById('paintingSaleStatus').value === 'for_sale' ? 'block' : 'none';
+        };
 
         // Store existing image URL in hidden field
         document.getElementById('paintingImage').value = painting.image_url;
@@ -4005,12 +5377,17 @@ async updateMission(needId) {
             return;
         }
 
+        const updateStatus = document.getElementById('paintingSaleStatus').value;
         const paintingData = {
             title: document.getElementById('paintingTitle').value,
             artist_name: document.getElementById('paintingArtist').value,
             artist_credit: document.getElementById('paintingCredit').value || null,
             description: document.getElementById('paintingDescription').value || null,
-            price: parseFloat(document.getElementById('paintingPrice').value),
+            price: updateStatus === 'for_sale' ? parseFloat(document.getElementById('paintingPrice').value) || 0 : 0,
+            sale_status: updateStatus,
+            available: updateStatus === 'for_sale',
+            date_created: document.getElementById('paintingDateCreated').value || null,
+            date_adopted: document.getElementById('paintingDateAdopted').value || null,
             image_url: document.getElementById('paintingImage').value
         };
 
@@ -4102,36 +5479,49 @@ async updateMission(needId) {
             creditEl.style.display = 'none';
         }
 
-        document.getElementById('paintingDetailPrice').innerHTML = '<span class="price-currency">$</span>' + parseFloat(painting.price).toFixed(2);
+        const detailStatus = painting.sale_status || (painting.available ? 'for_sale' : 'sold');
+        const priceEl = document.getElementById('paintingDetailPrice');
+        if (detailStatus === 'for_sale') {
+            priceEl.innerHTML = '<span class="price-currency">$</span>' + parseFloat(painting.price).toFixed(2);
+        } else if (detailStatus === 'for_trade') {
+            priceEl.innerHTML = '<span class="painting-price-trade">For Trade</span>';
+        } else if (detailStatus === 'not_for_sale') {
+            priceEl.innerHTML = '<span class="painting-price-nfs">Not for Sale</span>';
+        } else {
+            priceEl.innerHTML = '<span>Sold</span>';
+        }
 
         const overlay = document.getElementById('paintingDetailSoldOverlay');
-        overlay.style.display = painting.available ? 'none' : 'flex';
+        overlay.style.display = detailStatus === 'sold' ? 'flex' : 'none';
 
         // Build action buttons
         const actionsEl = document.getElementById('paintingDetailActions');
         actionsEl.innerHTML = '';
 
-        if (painting.available && this.currentUser) {
-            // PayPal container
+        if (detailStatus === 'for_sale' && this.currentUser) {
             const paypalDiv = document.createElement('div');
             paypalDiv.id = 'paypal-detail-btn';
             paypalDiv.className = 'paypal-button-container';
             actionsEl.appendChild(paypalDiv);
-
-            // Render PayPal button after modal is visible
             setTimeout(() => this.renderPayPalButton('paypal-detail-btn', painting), 100);
-        } else if (painting.available) {
+        } else if (detailStatus === 'for_sale') {
             const loginBtn = document.createElement('button');
             loginBtn.className = 'btn btn-outline';
             loginBtn.textContent = 'Login to Purchase';
             loginBtn.onclick = () => { this.showAlert('Please login to purchase', 'error'); this.showAuthModal(); };
             actionsEl.appendChild(loginBtn);
+        } else if (detailStatus === 'for_trade') {
+            const tradeBtn = document.createElement('button');
+            tradeBtn.className = 'btn btn-outline';
+            tradeBtn.textContent = 'Get in Touch';
+            tradeBtn.onclick = () => this.showSection('about');
+            actionsEl.appendChild(tradeBtn);
         } else {
-            const soldBtn = document.createElement('button');
-            soldBtn.className = 'btn btn-outline';
-            soldBtn.textContent = 'Sold';
-            soldBtn.disabled = true;
-            actionsEl.appendChild(soldBtn);
+            const infoBtn = document.createElement('button');
+            infoBtn.className = 'btn btn-outline';
+            infoBtn.textContent = detailStatus === 'sold' ? 'Sold' : 'Not for Sale';
+            infoBtn.disabled = true;
+            actionsEl.appendChild(infoBtn);
         }
 
         document.getElementById('paintingDetailModal').classList.add('active');
