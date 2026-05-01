@@ -516,6 +516,25 @@ async checkSession() {
     }
 
     async signInWithApple() {
+        // On iOS native app: use ASAuthorizationAppleIDProvider bridge (no OAuth redirect)
+        if (this.isNativeApp() && window.webkit?.messageHandlers?.appleSignIn) {
+            window._nativeAppleSignIn = async (token, nonce) => {
+                try {
+                    const { error } = await supabase.auth.signInWithIdToken({
+                        provider: 'apple',
+                        token,
+                        nonce
+                    });
+                    if (error) throw error;
+                } catch (err) {
+                    console.error('Apple sign-in token exchange failed:', err);
+                    this.showAlert('Sign in with Apple failed: ' + err.message, 'error');
+                }
+            };
+            window.webkit.messageHandlers.appleSignIn.postMessage({});
+            return;
+        }
+        // Web fallback: OAuth redirect flow
         try {
             const { error } = await supabase.auth.signInWithOAuth({
                 provider: 'apple',
@@ -3629,18 +3648,31 @@ async updateMission(needId) {
         }
     }
 
+    getScheduledOpenStatus() {
+        const now = new Date();
+        const day = now.getDay(); // 0=Sun, 1=Mon..5=Fri, 6=Sat
+        const mins = now.getHours() * 60 + now.getMinutes();
+        if (day >= 1 && day <= 5) return mins >= 9 * 60 && mins < 16 * 60;  // weekdays 9am–4pm
+        if (day === 0) return mins >= 11 * 60 && mins < 18 * 60;             // Sunday 11am–6pm
+        return false;
+    }
+
     async loadSpaceStatus() {
         try {
             const { data, error } = await supabase
                 .from('space_status')
-                .select('is_open')
+                .select('is_open, manual_override')
                 .eq('id', 1)
                 .maybeSingle();
             if (error) throw error;
-            this.spaceIsOpen = data?.is_open ?? false;
+            this.spaceManualOverride = data?.manual_override ?? null;
+            this.spaceIsOpen = this.spaceManualOverride !== null
+                ? this.spaceManualOverride
+                : this.getScheduledOpenStatus();
         } catch (e) {
             console.warn('loadSpaceStatus error:', e.message);
-            this.spaceIsOpen = false;
+            this.spaceManualOverride = null;
+            this.spaceIsOpen = this.getScheduledOpenStatus();
         }
         this.updateSpaceStatus();
     }
@@ -3660,18 +3692,30 @@ async updateMission(needId) {
             statusText.textContent = 'CLOSED';
         }
 
-        // Show admin toggle button only for admins
+        const isManual = this.spaceManualOverride !== null && this.spaceManualOverride !== undefined;
+
+        // Hero admin controls
         const adminArea = document.getElementById('adminSpaceToggleArea');
         const adminBtn = document.getElementById('adminToggleSpaceBtn');
+        const adminAutoBtn = document.getElementById('adminResetAutoBtn');
         if (adminArea && adminBtn) {
             if (this.currentUser?.user_status === 'admin') {
                 adminArea.style.display = 'block';
-                adminBtn.textContent = this.spaceIsOpen ? 'Set Space Closed' : 'Set Space Open';
+                adminBtn.textContent = this.spaceIsOpen ? 'Force Closed' : 'Force Open';
                 adminBtn.classList.toggle('space-is-open', this.spaceIsOpen);
+                if (adminAutoBtn) adminAutoBtn.style.display = isManual ? 'inline-block' : 'none';
             } else {
                 adminArea.style.display = 'none';
             }
         }
+
+        // Admin dashboard controls
+        const dashLabel = document.getElementById('adminDashSpaceLabel');
+        const dashBtn = document.getElementById('adminDashSpaceBtn');
+        const dashAutoBtn = document.getElementById('adminDashAutoBtn');
+        if (dashLabel) dashLabel.textContent = `Space: ${this.spaceIsOpen ? 'OPEN' : 'CLOSED'} (${isManual ? 'Manual' : 'Auto'})`;
+        if (dashBtn) dashBtn.textContent = this.spaceIsOpen ? 'Force Closed' : 'Force Open';
+        if (dashAutoBtn) dashAutoBtn.style.display = isManual ? 'inline-block' : 'none';
     }
 
     async toggleSpaceStatus() {
@@ -3681,20 +3725,36 @@ async updateMission(needId) {
         try {
             const { error } = await supabase
                 .from('space_status')
-                .update({ is_open: newStatus, updated_at: new Date().toISOString(), updated_by: this.currentUser.id })
+                .update({ is_open: newStatus, manual_override: newStatus, updated_at: new Date().toISOString(), updated_by: this.currentUser.id })
                 .eq('id', 1);
             if (error) throw error;
+            this.spaceManualOverride = newStatus;
             this.spaceIsOpen = newStatus;
             this.updateSpaceStatus();
-            // Sync dashboard toggle label if visible
-            const dashLabel = document.getElementById('adminDashSpaceLabel');
-            const dashBtn = document.getElementById('adminDashSpaceBtn');
-            if (dashLabel) dashLabel.textContent = `Space: ${newStatus ? 'OPEN' : 'CLOSED'}`;
-            if (dashBtn) dashBtn.textContent = newStatus ? 'Set Closed' : 'Set Open';
-            this.showAlert(`Space set to ${newStatus ? 'OPEN' : 'CLOSED'}`, 'success');
+            this.showAlert(`Space manually set to ${newStatus ? 'OPEN' : 'CLOSED'}`, 'success');
         } catch (e) {
             console.error('toggleSpaceStatus error:', e);
             this.showAlert('Error updating space status: ' + e.message, 'error');
+        }
+    }
+
+    async resetSpaceToAuto() {
+        if (!this.currentUser || this.currentUser.user_status !== 'admin') return;
+
+        const autoStatus = this.getScheduledOpenStatus();
+        try {
+            const { error } = await supabase
+                .from('space_status')
+                .update({ is_open: autoStatus, manual_override: null, updated_at: new Date().toISOString(), updated_by: this.currentUser.id })
+                .eq('id', 1);
+            if (error) throw error;
+            this.spaceManualOverride = null;
+            this.spaceIsOpen = autoStatus;
+            this.updateSpaceStatus();
+            this.showAlert(`Space reset to Auto schedule (currently ${autoStatus ? 'OPEN' : 'CLOSED'})`, 'success');
+        } catch (e) {
+            console.error('resetSpaceToAuto error:', e);
+            this.showAlert('Error resetting space status: ' + e.message, 'error');
         }
     }
 
@@ -4315,11 +4375,6 @@ async updateMission(needId) {
     }
 
     async createStripeCheckout(tier, price) {
-        if (this.isNativeApp()) {
-            this.showAlert('To subscribe, please visit dom-collective.com in your browser.', 'info');
-            return;
-        }
-
         const paymentLinks = {
             member: 'https://buy.stripe.com/00w8wP6Uw1no3DcacognK04',
             contributor: 'https://buy.stripe.com/eVq9ATceQ6HIddM4S4gnK01'
@@ -4328,6 +4383,11 @@ async updateMission(needId) {
         const link = paymentLinks[tier];
         if (!link) {
             this.showAlert('Invalid membership tier selected.', 'error');
+            return;
+        }
+
+        if (this.isNativeApp()) {
+            window.open(link, '_blank');
             return;
         }
 
@@ -4341,12 +4401,6 @@ async updateMission(needId) {
     initDonateSection() {
         if (this._donateInitialized) return;
         this._donateInitialized = true;
-
-        if (this.isNativeApp()) {
-            const section = document.getElementById('donate');
-            if (section) section.innerHTML = `<div style="padding:2rem;text-align:center;"><h3>Support DōM</h3><p>To donate, please visit <strong>dom-collective.com</strong> in your browser.</p></div>`;
-            return;
-        }
 
         const presetBtns = document.querySelectorAll('.donation-preset-btn');
         const customInput = document.getElementById('donationCustomAmount');
@@ -4394,6 +4448,14 @@ async updateMission(needId) {
 
         try {
             const amountCents = Math.round(amount * 100);
+
+            if (this.isNativeApp()) {
+                window.open(`${STRIPE_DONATION_LINK}?prefilled_amount=${amountCents}`, '_blank');
+                donateBtn.disabled = false;
+                donateBtn.textContent = 'Donate with Stripe';
+                return;
+            }
+
             const { data, error } = await supabase.functions.invoke('create-donation-checkout', {
                 body: { amount_cents: amountCents }
             });
@@ -4448,6 +4510,33 @@ async updateMission(needId) {
         }
 
         this.showAlert('Opening billing portal...', 'info');
+    }
+
+    async deleteAccount() {
+        const modal = document.getElementById('deleteAccountModal');
+        if (modal) { modal.style.display = 'flex'; modal.classList.add('active'); }
+    }
+
+    async confirmDeleteAccount() {
+        const modal = document.getElementById('deleteAccountModal');
+        const btn = document.getElementById('confirmDeleteAccountBtn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Deleting...'; }
+
+        try {
+            const { error } = await supabase.functions.invoke('delete-account');
+            if (error) throw error;
+
+            if (modal) this.closeModal(modal);
+            await supabase.auth.signOut();
+            this.currentUser = null;
+            this.updateAuthButton();
+            this.showSection('home');
+            this.showAlert('Your account has been permanently deleted.', 'success');
+        } catch (err) {
+            console.error('Account deletion failed:', err);
+            this.showAlert('Failed to delete account. Please try again or contact support.', 'error');
+            if (btn) { btn.disabled = false; btn.textContent = 'Yes, Delete My Account'; }
+        }
     }
 
     async handlePaymentSuccess(tier) {
@@ -4908,6 +4997,11 @@ async updateMission(needId) {
         // Profile
         document.getElementById('profileForm').addEventListener('submit', (e) => this.saveProfile(e));
         document.getElementById('profileEditBtn').addEventListener('click', () => this.toggleProfileEditMode());
+        document.getElementById('deleteAccountBtn')?.addEventListener('click', () => this.deleteAccount());
+        document.getElementById('confirmDeleteAccountBtn')?.addEventListener('click', () => this.confirmDeleteAccount());
+        document.getElementById('cancelDeleteAccountBtn')?.addEventListener('click', () => {
+            this.closeModal(document.getElementById('deleteAccountModal'));
+        });
         document.getElementById('profileAvatar').addEventListener('input', () => this.updateAvatarDisplay());
         document.getElementById('addProjectBtn').addEventListener('click', () => this.showProjectModal());
         const profilePhotosInput = document.getElementById('profilePhotosInput');
