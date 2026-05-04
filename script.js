@@ -4387,12 +4387,92 @@ async updateMission(needId) {
         }
 
         if (this.isNativeApp()) {
-            window.open(link, '_blank');
+            this.showMembershipExternalNotice(link);
             return;
         }
 
         this.showAlert('Redirecting to checkout...', 'info');
         window.location.href = link;
+    }
+
+    showMembershipExternalNotice(link) {
+        const existing = document.getElementById('externalPaymentNotice');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'externalPaymentNotice';
+        modal.style.cssText = `
+            position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.85);z-index:9999;
+            display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;
+        `;
+        modal.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:32px;max-width:400px;width:100%;text-align:center;">
+                <h3 style="margin:0 0 12px;font-size:1.1rem;color:#000;">LEAVING APP TO COMPLETE PURCHASE</h3>
+                <p style="margin:0 0 24px;font-size:0.9rem;color:#555;line-height:1.5;">
+                    Dom Collective memberships provide access to our physical creative space.
+                    You will be taken to our secure payment website to complete your transaction.
+                    Apple is not the seller and is not responsible for this purchase.
+                </p>
+                <button id="externalPaymentContinue" style="
+                    display:block;width:100%;padding:14px;margin-bottom:12px;
+                    background:#000;color:#fff;border:none;border-radius:8px;
+                    font-size:1rem;font-weight:600;cursor:pointer;
+                ">CONTINUE TO WEBSITE</button>
+                <button id="externalPaymentCancel" style="
+                    display:block;width:100%;padding:14px;
+                    background:transparent;color:#555;border:1px solid #ccc;border-radius:8px;
+                    font-size:1rem;cursor:pointer;
+                ">CANCEL</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        document.getElementById('externalPaymentContinue').addEventListener('click', () => {
+            modal.remove();
+            window.open(link, '_blank');
+        });
+        document.getElementById('externalPaymentCancel').addEventListener('click', () => modal.remove());
+    }
+
+    showDonationExternalNotice(link) {
+        const existing = document.getElementById('externalDonationNotice');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'externalDonationNotice';
+        modal.style.cssText = `
+            position:fixed;top:0;left:0;width:100%;height:100%;
+            background:rgba(0,0,0,0.85);z-index:9999;
+            display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;
+        `;
+        modal.innerHTML = `
+            <div style="background:#fff;border-radius:12px;padding:32px;max-width:400px;width:100%;text-align:center;">
+                <h3 style="margin:0 0 12px;font-size:1.1rem;color:#000;">SUPPORT DŌM COLLECTIVE</h3>
+                <p style="margin:0 0 24px;font-size:0.9rem;color:#555;line-height:1.5;">
+                    Your contribution helps keep our physical creative space open — the lights on, the doors open, the community growing.
+                    You will be taken to our secure donation website.
+                    Apple is not the seller and is not responsible for this transaction.
+                </p>
+                <button id="externalDonationContinue" style="
+                    display:block;width:100%;padding:14px;margin-bottom:12px;
+                    background:#000;color:#fff;border:none;border-radius:8px;
+                    font-size:1rem;font-weight:600;cursor:pointer;
+                ">CONTINUE TO WEBSITE</button>
+                <button id="externalDonationCancel" style="
+                    display:block;width:100%;padding:14px;
+                    background:transparent;color:#555;border:1px solid #ccc;border-radius:8px;
+                    font-size:1rem;cursor:pointer;
+                ">CANCEL</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+
+        document.getElementById('externalDonationContinue').addEventListener('click', () => {
+            modal.remove();
+            window.open(link, '_blank');
+        });
+        document.getElementById('externalDonationCancel').addEventListener('click', () => modal.remove());
     }
 
     // ====================================
@@ -4450,9 +4530,9 @@ async updateMission(needId) {
             const amountCents = Math.round(amount * 100);
 
             if (this.isNativeApp()) {
-                window.open(`${STRIPE_DONATION_LINK}?prefilled_amount=${amountCents}`, '_blank');
                 donateBtn.disabled = false;
                 donateBtn.textContent = 'Donate with Stripe';
+                this.showDonationExternalNotice(`${STRIPE_DONATION_LINK}?prefilled_amount=${amountCents}`);
                 return;
             }
 
