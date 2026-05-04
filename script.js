@@ -4387,7 +4387,7 @@ async updateMission(needId) {
         }
 
         if (this.isNativeApp()) {
-            this.showMembershipExternalNotice(link);
+            this.showNativeWebsiteNotice();
             return;
         }
 
@@ -4395,12 +4395,12 @@ async updateMission(needId) {
         window.location.href = link;
     }
 
-    showMembershipExternalNotice(link) {
-        const existing = document.getElementById('externalPaymentNotice');
+    showNativeWebsiteNotice() {
+        const existing = document.getElementById('nativeWebsiteNotice');
         if (existing) existing.remove();
 
         const modal = document.createElement('div');
-        modal.id = 'externalPaymentNotice';
+        modal.id = 'nativeWebsiteNotice';
         modal.style.cssText = `
             position:fixed;top:0;left:0;width:100%;height:100%;
             background:rgba(0,0,0,0.85);z-index:9999;
@@ -4408,18 +4408,16 @@ async updateMission(needId) {
         `;
         modal.innerHTML = `
             <div style="background:#fff;border-radius:12px;padding:32px;max-width:400px;width:100%;text-align:center;">
-                <h3 style="margin:0 0 12px;font-size:1.1rem;color:#000;">LEAVING APP TO COMPLETE PURCHASE</h3>
+                <h3 style="margin:0 0 12px;font-size:1.1rem;color:#000;">VISIT OUR WEBSITE</h3>
                 <p style="margin:0 0 24px;font-size:0.9rem;color:#555;line-height:1.5;">
-                    Dom Collective memberships provide access to our physical creative space.
-                    You will be taken to our secure payment website to complete your transaction.
-                    Apple is not the seller and is not responsible for this purchase.
+                    Memberships and donations are managed through our website at dom-collective.com.
                 </p>
-                <button id="externalPaymentContinue" style="
+                <button id="nativeWebsiteOpen" style="
                     display:block;width:100%;padding:14px;margin-bottom:12px;
                     background:#000;color:#fff;border:none;border-radius:8px;
                     font-size:1rem;font-weight:600;cursor:pointer;
-                ">CONTINUE TO WEBSITE</button>
-                <button id="externalPaymentCancel" style="
+                ">OPEN DOM-COLLECTIVE.COM</button>
+                <button id="nativeWebsiteCancel" style="
                     display:block;width:100%;padding:14px;
                     background:transparent;color:#555;border:1px solid #ccc;border-radius:8px;
                     font-size:1rem;cursor:pointer;
@@ -4428,51 +4426,11 @@ async updateMission(needId) {
         `;
         document.body.appendChild(modal);
 
-        document.getElementById('externalPaymentContinue').addEventListener('click', () => {
+        document.getElementById('nativeWebsiteOpen').addEventListener('click', () => {
             modal.remove();
-            window.open(link, '_blank');
+            window.open('https://dom-collective.com', '_blank');
         });
-        document.getElementById('externalPaymentCancel').addEventListener('click', () => modal.remove());
-    }
-
-    showDonationExternalNotice(link) {
-        const existing = document.getElementById('externalDonationNotice');
-        if (existing) existing.remove();
-
-        const modal = document.createElement('div');
-        modal.id = 'externalDonationNotice';
-        modal.style.cssText = `
-            position:fixed;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,0.85);z-index:9999;
-            display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;
-        `;
-        modal.innerHTML = `
-            <div style="background:#fff;border-radius:12px;padding:32px;max-width:400px;width:100%;text-align:center;">
-                <h3 style="margin:0 0 12px;font-size:1.1rem;color:#000;">SUPPORT DŌM COLLECTIVE</h3>
-                <p style="margin:0 0 24px;font-size:0.9rem;color:#555;line-height:1.5;">
-                    Your contribution helps keep our physical creative space open — the lights on, the doors open, the community growing.
-                    You will be taken to our secure donation website.
-                    Apple is not the seller and is not responsible for this transaction.
-                </p>
-                <button id="externalDonationContinue" style="
-                    display:block;width:100%;padding:14px;margin-bottom:12px;
-                    background:#000;color:#fff;border:none;border-radius:8px;
-                    font-size:1rem;font-weight:600;cursor:pointer;
-                ">CONTINUE TO WEBSITE</button>
-                <button id="externalDonationCancel" style="
-                    display:block;width:100%;padding:14px;
-                    background:transparent;color:#555;border:1px solid #ccc;border-radius:8px;
-                    font-size:1rem;cursor:pointer;
-                ">CANCEL</button>
-            </div>
-        `;
-        document.body.appendChild(modal);
-
-        document.getElementById('externalDonationContinue').addEventListener('click', () => {
-            modal.remove();
-            window.open(link, '_blank');
-        });
-        document.getElementById('externalDonationCancel').addEventListener('click', () => modal.remove());
+        document.getElementById('nativeWebsiteCancel').addEventListener('click', () => modal.remove());
     }
 
     // ====================================
@@ -4481,6 +4439,27 @@ async updateMission(needId) {
     initDonateSection() {
         if (this._donateInitialized) return;
         this._donateInitialized = true;
+
+        if (this.isNativeApp()) {
+            const donateForm = document.getElementById('donateForm') || document.querySelector('#donate .donate-card') || document.querySelector('#donate form');
+            const container = donateForm || document.querySelector('#donate .section-content') || document.getElementById('donate');
+            if (container) {
+                container.innerHTML = `
+                    <div style="text-align:center;padding:40px 20px;">
+                        <h3 style="margin:0 0 16px;">SUPPORT DŌM</h3>
+                        <p style="margin:0 0 24px;color:#888;line-height:1.6;">
+                            Every contribution keeps the space alive — the lights on, the doors open, the community growing.<br><br>
+                            To donate, visit us at <strong>dom-collective.com</strong>.
+                        </p>
+                        <button onclick="window.open('https://dom-collective.com','_blank')" style="
+                            padding:14px 32px;background:#f5c518;color:#000;border:none;
+                            border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;
+                        ">VISIT OUR WEBSITE</button>
+                    </div>
+                `;
+            }
+            return;
+        }
 
         const presetBtns = document.querySelectorAll('.donation-preset-btn');
         const customInput = document.getElementById('donationCustomAmount');
@@ -4532,7 +4511,7 @@ async updateMission(needId) {
             if (this.isNativeApp()) {
                 donateBtn.disabled = false;
                 donateBtn.textContent = 'Donate with Stripe';
-                this.showDonationExternalNotice(`${STRIPE_DONATION_LINK}?prefilled_amount=${amountCents}`);
+                this.showNativeWebsiteNotice();
                 return;
             }
 
