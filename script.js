@@ -2460,6 +2460,10 @@ async updateMission(needId) {
             case 'bookspace':
                 this.loadBookSpaceSection();
                 break;
+            case 'membership':
+                this.initMembershipSection();
+                if (this.currentUser) this.loadUserSubscription();
+                break;
             case 'donate':
                 this.initDonateSection();
                 break;
@@ -4530,6 +4534,35 @@ async updateMission(needId) {
             donateBtn.disabled = false;
             donateBtn.textContent = 'Donate with Stripe';
         }
+    }
+
+    initMembershipSection() {
+        if (this._membershipNativeInitialized) return;
+        this._membershipNativeInitialized = true;
+
+        if (!this.isNativeApp()) return;
+
+        const tiersGrid = document.querySelector('.membership-tiers-grid');
+        const contributorSection = document.querySelector('.tier-contributor-section');
+
+        if (tiersGrid) {
+            tiersGrid.innerHTML = `
+                <div style="text-align:center;padding:40px 20px;max-width:500px;margin:0 auto;">
+                    <h3 style="margin:0 0 16px;color:#fff;">JOIN DŌM</h3>
+                    <p style="margin:0 0 24px;color:#888;line-height:1.6;">
+                        Memberships are managed through our website.<br><br>
+                        Visit <strong style="color:#fff;">dom-collective.com</strong> in Safari to become a Creator or Collaborator member and unlock full access to the collective.
+                    </p>
+                    <button onclick="window.open('https://dom-collective.com','_blank')" style="
+                        padding:14px 32px;background:#fff;color:#000;border:none;
+                        border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;
+                        display:block;width:100%;max-width:320px;margin:0 auto;
+                    ">VISIT DOM-COLLECTIVE.COM</button>
+                </div>
+            `;
+        }
+
+        if (contributorSection) contributorSection.style.display = 'none';
     }
 
     async downgradeMembership(tier) {
