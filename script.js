@@ -516,22 +516,23 @@ async checkSession() {
     }
 
     async signInWithApple() {
-        // On iOS native app: use ASAuthorizationAppleIDProvider bridge (no OAuth redirect)
+        // On iOS native app: use ASWebAuthenticationSession via Supabase OAuth URL
         if (this.isNativeApp() && window.webkit?.messageHandlers?.appleSignIn) {
-            window._nativeAppleSignIn = async (token, nonce) => {
-                try {
-                    const { error } = await supabase.auth.signInWithIdToken({
-                        provider: 'apple',
-                        token,
-                        nonce
-                    });
-                    if (error) throw error;
-                } catch (err) {
-                    console.error('Apple sign-in token exchange failed:', err);
-                    this.showAlert('Sign in with Apple failed: ' + err.message, 'error');
-                }
-            };
-            window.webkit.messageHandlers.appleSignIn.postMessage({});
+            try {
+                const { data, error } = await supabase.auth.signInWithOAuth({
+                    provider: 'apple',
+                    options: {
+                        redirectTo: 'domcollective://auth-callback',
+                        skipBrowserRedirect: true
+                    }
+                });
+                if (error) throw error;
+                if (!data?.url) throw new Error('No OAuth URL returned');
+                window.webkit.messageHandlers.appleSignIn.postMessage({ url: data.url });
+            } catch (err) {
+                console.error('Apple sign-in failed:', err);
+                this.showAlert('Sign in with Apple failed. Please try again.', 'error');
+            }
             return;
         }
         // Web fallback: OAuth redirect flow
