@@ -1532,6 +1532,10 @@ async checkSession() {
     }
 
     async purchaseEventTicket(eventId) {
+        if (this.isNativeApp()) {
+            this.showNativeWebsiteNotice();
+            return;
+        }
         const event = this._detailEvent;
         const settings = this.eventSettings?.[eventId] || {};
         const ticketPrice = parseFloat(settings.ticket_price || 0);
@@ -4542,22 +4546,41 @@ async updateMission(needId) {
 
         if (!this.isNativeApp()) return;
 
+        const manageBtn = document.getElementById('manageMembershipBtn');
+        if (manageBtn) manageBtn.style.display = 'none';
+
         const tiersGrid = document.querySelector('.membership-tiers-grid');
         const contributorSection = document.querySelector('.tier-contributor-section');
 
         if (tiersGrid) {
             tiersGrid.innerHTML = `
-                <div style="text-align:center;padding:40px 20px;max-width:500px;margin:0 auto;">
-                    <h3 style="margin:0 0 16px;color:#fff;">JOIN DŌM</h3>
-                    <p style="margin:0 0 24px;color:#888;line-height:1.6;">
-                        Memberships are managed through our website.<br><br>
-                        Visit <strong style="color:#fff;">dom-collective.com</strong> in Safari to become a Creator or Collaborator member and unlock full access to the collective.
-                    </p>
-                    <button onclick="window.open('https://dom-collective.com','_blank')" style="
-                        padding:14px 32px;background:#fff;color:#000;border:none;
-                        border-radius:8px;font-size:1rem;font-weight:700;cursor:pointer;
-                        display:block;width:100%;max-width:320px;margin:0 auto;
-                    ">VISIT DOM-COLLECTIVE.COM</button>
+                <div style="max-width:480px;margin:0 auto;padding:0 0 32px;">
+                    <div style="border:1px solid #ddd;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+                        <div style="padding:18px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <div style="font-weight:700;font-size:1rem;margin-bottom:3px;">Creator</div>
+                                <div style="color:#666;font-size:0.82rem;">Door access · Needs board · Showcase</div>
+                            </div>
+                            <div style="font-weight:700;font-size:1.05rem;">$20/mo</div>
+                        </div>
+                        <div style="padding:18px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
+                            <div>
+                                <div style="font-weight:700;font-size:1rem;margin-bottom:3px;">Collaborator</div>
+                                <div style="color:#666;font-size:0.82rem;">Door code · Host events · Studio access</div>
+                            </div>
+                            <div style="font-weight:700;font-size:1.05rem;">$35/mo</div>
+                        </div>
+                        <div style="padding:18px 20px;background:#f8f8f8;">
+                            <p style="margin:0 0 14px;font-size:0.85rem;color:#555;text-align:center;line-height:1.5;">
+                                Memberships are purchased and managed at <strong style="color:#000;">dom-collective.com</strong>. Tap below to open in Safari.
+                            </p>
+                            <button onclick="window.open('https://dom-collective.com','_blank')" style="
+                                display:block;width:100%;padding:14px;
+                                background:#000;color:#fff;border:none;border-radius:8px;
+                                font-size:0.95rem;font-weight:700;cursor:pointer;letter-spacing:0.02em;
+                            ">OPEN DOM-COLLECTIVE.COM →</button>
+                        </div>
+                    </div>
                 </div>
             `;
         }
@@ -5686,11 +5709,20 @@ async updateMission(needId) {
         actionsEl.innerHTML = '';
 
         if (detailStatus === 'for_sale' && this.currentUser) {
-            const paypalDiv = document.createElement('div');
-            paypalDiv.id = 'paypal-detail-btn';
-            paypalDiv.className = 'paypal-button-container';
-            actionsEl.appendChild(paypalDiv);
-            setTimeout(() => this.renderPayPalButton('paypal-detail-btn', painting), 100);
+            if (this.isNativeApp()) {
+                const buyBtn = document.createElement('button');
+                buyBtn.className = 'btn btn-primary';
+                buyBtn.textContent = 'PURCHASE AT DOM-COLLECTIVE.COM →';
+                buyBtn.style.width = '100%';
+                buyBtn.onclick = () => window.open('https://dom-collective.com', '_blank');
+                actionsEl.appendChild(buyBtn);
+            } else {
+                const paypalDiv = document.createElement('div');
+                paypalDiv.id = 'paypal-detail-btn';
+                paypalDiv.className = 'paypal-button-container';
+                actionsEl.appendChild(paypalDiv);
+                setTimeout(() => this.renderPayPalButton('paypal-detail-btn', painting), 100);
+            }
         } else if (detailStatus === 'for_sale') {
             const loginBtn = document.createElement('button');
             loginBtn.className = 'btn btn-outline';
