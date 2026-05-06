@@ -4553,39 +4553,85 @@ async updateMission(needId) {
         const contributorSection = document.querySelector('.tier-contributor-section');
 
         if (tiersGrid) {
+            const currentTier = this.currentUser?.subscription_tier || 'visitor';
+            const tierRow = (label, tier, productId, appPrice, perks) => {
+                const isCurrent = tier === currentTier;
+                return `
+                    <div style="padding:18px 20px;border-bottom:1px solid #eee;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                            <div>
+                                <div style="font-weight:700;font-size:1rem;">${label}${isCurrent ? ' ✓' : ''}</div>
+                                <div style="color:#666;font-size:0.8rem;margin-top:2px;">${perks}</div>
+                            </div>
+                            <div style="font-weight:700;font-size:1rem;margin-left:12px;white-space:nowrap;">$${appPrice}/mo</div>
+                        </div>
+                        ${isCurrent
+                            ? `<div style="padding:10px;text-align:center;background:#000;color:#fff;border-radius:8px;font-size:0.85rem;font-weight:600;">Current Plan</div>`
+                            : `<button onclick="app.purchaseIAP('${productId}','${tier}')" style="display:block;width:100%;padding:11px;background:#000;color:#fff;border:none;border-radius:8px;font-size:0.88rem;font-weight:700;cursor:pointer;">SUBSCRIBE — $${appPrice}/MO</button>`
+                        }
+                    </div>
+                `;
+            };
+
             tiersGrid.innerHTML = `
-                <div style="max-width:480px;margin:0 auto;padding:0 0 32px;">
-                    <div style="border:1px solid #ddd;border-radius:12px;overflow:hidden;margin-bottom:16px;">
-                        <div style="padding:18px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="font-weight:700;font-size:1rem;margin-bottom:3px;">Creator</div>
-                                <div style="color:#666;font-size:0.82rem;">Door access · Needs board · Showcase</div>
-                            </div>
-                            <div style="font-weight:700;font-size:1.05rem;">$20/mo</div>
-                        </div>
-                        <div style="padding:18px 20px;border-bottom:1px solid #eee;display:flex;justify-content:space-between;align-items:center;">
-                            <div>
-                                <div style="font-weight:700;font-size:1rem;margin-bottom:3px;">Collaborator</div>
-                                <div style="color:#666;font-size:0.82rem;">Door code · Host events · Studio access</div>
-                            </div>
-                            <div style="font-weight:700;font-size:1.05rem;">$35/mo</div>
-                        </div>
-                        <div style="padding:18px 20px;background:#f8f8f8;">
-                            <p style="margin:0 0 14px;font-size:0.85rem;color:#555;text-align:center;line-height:1.5;">
-                                Memberships are purchased and managed at <strong style="color:#000;">dom-collective.com</strong>. Tap below to open in Safari.
+                <div style="max-width:480px;margin:0 auto;padding:0 0 24px;">
+                    <div style="border:1px solid #ddd;border-radius:12px;overflow:hidden;margin-bottom:12px;">
+                        ${tierRow('Creator', 'member', 'com.domcollective.app.creator_monthly', '24.99', 'Door access · Needs board · Showcase')}
+                        ${tierRow('Collaborator', 'contributor', 'com.domcollective.app.collaborator_monthly', '39.99', 'Door code · Host events · Studio access')}
+                        <div style="padding:16px 20px;background:#f8f8f8;">
+                            <p style="margin:0 0 10px;font-size:0.78rem;color:#777;text-align:center;line-height:1.5;">
+                                <a href="#" onclick="app.restoreIAP();return false;" style="color:#999;text-decoration:underline;">Restore purchases</a>
                             </p>
-                            <button onclick="window.open('https://dom-collective.com','_blank')" style="
-                                display:block;width:100%;padding:14px;
-                                background:#000;color:#fff;border:none;border-radius:8px;
-                                font-size:0.95rem;font-weight:700;cursor:pointer;letter-spacing:0.02em;
-                            ">OPEN DOM-COLLECTIVE.COM →</button>
                         </div>
+                    </div>
+                    <div style="background:#fff8e1;border:1px solid #f0c040;border-radius:10px;padding:14px 16px;">
+                        <p style="margin:0 0 10px;font-size:0.8rem;color:#555;line-height:1.55;">
+                            <strong style="color:#333;">⚠️ These prices include Apple's mandatory 30% commission</strong> on all in-app purchases — a policy currently under antitrust investigation in the US, EU, and multiple other jurisdictions. You're paying $5/mo extra because of it.<br><br>
+                            Subscribe directly at <strong style="color:#000;">dom-collective.com</strong> for the actual price: Creator $20/mo, Collaborator $35/mo.
+                        </p>
+                        <button onclick="window.open('https://dom-collective.com','_blank')" style="display:block;width:100%;padding:11px;background:#fff;color:#000;border:1.5px solid #000;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;">SUBSCRIBE AT DOM-COLLECTIVE.COM →</button>
                     </div>
                 </div>
             `;
         }
 
         if (contributorSection) contributorSection.style.display = 'none';
+    }
+
+    purchaseIAP(productId, tier) {
+        if (!this.currentUser) {
+            this.showAlert('Please sign in first.', 'error');
+            this.showAuthModal();
+            return;
+        }
+        if (window.webkit?.messageHandlers?.iapPurchase) {
+            window.webkit.messageHandlers.iapPurchase.postMessage({ productId, tier });
+        } else {
+            window.open('https://dom-collective.com', '_blank');
+        }
+    }
+
+    restoreIAP() {
+        if (window.webkit?.messageHandlers?.restoreIAP) {
+            window.webkit.messageHandlers.restoreIAP.postMessage({});
+        }
+    }
+
+    async handleIAPPurchase(tier) {
+        if (!this.currentUser) return;
+        const { error } = await supabase
+            .from('profiles')
+            .update({ subscription_tier: tier })
+            .eq('id', this.currentUser.id);
+        if (error) {
+            this.showAlert('Subscription activated but profile sync failed. Pull to refresh.', 'error');
+            return;
+        }
+        this.currentUser.subscription_tier = tier;
+        this._membershipNativeInitialized = false;
+        this.initMembershipSection();
+        this.updateAuthButton();
+        this.showAlert('Welcome to DōM ' + this.getTierDisplayName(tier) + ' membership!', 'success');
     }
 
     async downgradeMembership(tier) {
