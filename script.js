@@ -3419,6 +3419,10 @@ async updateMission(needId) {
 
             if (error) throw error;
 
+            // Delete the auth account so they cannot sign back in
+            const { error: authError } = await supabase.rpc('admin_delete_user', { target_user_id: memberId });
+            if (authError) console.warn('Auth user delete failed (profile already removed):', authError.message);
+
             this.showAlert('Member deleted successfully', 'success');
             await this.loadMembers();
             this.renderMembers();
