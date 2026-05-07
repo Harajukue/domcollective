@@ -516,7 +516,6 @@ async checkSession() {
     }
 
     async signInWithApple() {
-        // On iOS native app: use ASWebAuthenticationSession via Supabase OAuth URL
         if (this.isNativeApp() && window.webkit?.messageHandlers?.appleSignIn) {
             try {
                 const { data, error } = await supabase.auth.signInWithOAuth({
@@ -545,6 +544,24 @@ async checkSession() {
         } catch (error) {
             console.error('Apple sign-in failed:', error);
             this.showAlert('Failed to sign in with Apple: ' + error.message, 'error');
+        }
+    }
+
+    async handleNativeSIWAResult({ code, error } = {}) {
+        if (error) {
+            this.showAlert(error, 'error');
+            return;
+        }
+        if (!code) {
+            this.showAlert('Sign in with Apple failed. Please try again.', 'error');
+            return;
+        }
+        try {
+            const { error: supaError } = await supabase.auth.exchangeCodeForSession(code);
+            if (supaError) throw supaError;
+        } catch (e) {
+            console.error('SIWA Supabase error:', e);
+            this.showAlert('Apple Sign In failed: ' + e.message, 'error');
         }
     }
 
@@ -4591,6 +4608,11 @@ async updateMission(needId) {
                         </p>
                         <button onclick="window.open('https://dom-collective.com','_blank')" style="display:block;width:100%;padding:11px;background:#fff;color:#000;border:1.5px solid #000;border-radius:8px;font-size:0.85rem;font-weight:700;cursor:pointer;">SUBSCRIBE AT DOM-COLLECTIVE.COM →</button>
                     </div>
+                    <p style="text-align:center;margin-top:14px;font-size:0.72rem;color:#aaa;">
+                        <a href="https://dom-collective.com/privacy-policy.html" style="color:#aaa;">Privacy Policy</a>
+                        &nbsp;·&nbsp;
+                        <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" style="color:#aaa;">Terms of Use</a>
+                    </p>
                 </div>
             `;
         }
