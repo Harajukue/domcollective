@@ -43,7 +43,7 @@ var supabase = (function() {
             storageKey: 'dom-collective-auth',
             storage: window.localStorage,
             autoRefreshToken: true,
-            detectSessionInUrl: true,
+            detectSessionInUrl: false,
             flowType: 'pkce'
         }
     });
