@@ -2793,7 +2793,7 @@ async updateMission(needId) {
                         </div>
                         <div class="space-request-badges">
                             <span class="request-badge status-${req.status}" id="dash-req-badge-${req.id}">${req.status}</span>
-                            <span class="request-badge">$${req.contribution}</span>
+                            <span class="request-badge">${req.contribution > 0 ? (req.contribution >= 300 ? '$300+' : `$${req.contribution}`) : req.contribution === 0 ? 'Open' : 'In-Kind'}</span>
                         </div>
                     </div>
                     <div class="space-request-details">
@@ -4866,11 +4866,22 @@ async updateMission(needId) {
         const val = parseInt(slider.value);
         display.textContent = val >= 300 ? '$300+' : `$${val}`;
 
-        if (val <= 25)       label.textContent = 'Appreciated';
+        if (val === 0)       label.textContent = 'Open Conversation';
+        else if (val <= 25)  label.textContent = 'Appreciated';
         else if (val <= 75)  label.textContent = 'Supportive';
         else if (val <= 150) label.textContent = 'Generous';
         else if (val <= 225) label.textContent = 'Champion';
         else                 label.textContent = 'Catalist';
+    }
+
+    updateContributionMode(mode) {
+        document.querySelectorAll('.contribution-mode-tile').forEach(t => {
+            t.classList.toggle('selected', t.dataset.mode === mode);
+        });
+        ['financial', 'inkind', 'community'].forEach(m => {
+            const el = document.getElementById(`contribution-${m}`);
+            if (el) el.style.display = m === mode ? 'block' : 'none';
+        });
     }
 
     loadBookSpaceSection() {
@@ -4924,7 +4935,12 @@ async updateMission(needId) {
         const description = document.getElementById('requestDescription').value.trim();
         const special     = document.getElementById('requestSpecialNeeds').value.trim();
         const contact     = document.getElementById('requestContact').value.trim();
-        const contribution = document.getElementById('contributionSlider').value;
+
+        const contributionMode = document.querySelector('input[name="contributionMode"]:checked')?.value || 'financial';
+        const inkindOffer = (document.getElementById('inkindDescription')?.value || '').trim();
+        const contribution = contributionMode === 'financial'
+            ? parseInt(document.getElementById('contributionSlider').value)
+            : contributionMode === 'inkind' ? -1 : 0;
 
         if (!title || !date || !startTime || !endTime || !headcount || !description || !contact) {
             this.showAlert('Please fill in all required fields', 'error');
@@ -4936,7 +4952,12 @@ async updateMission(needId) {
         submitBtn.textContent = 'Submitting...';
 
         try {
-            const requestData = {
+            const specialWithOffer = [
+                special || null,
+                (contributionMode === 'inkind' && inkindOffer) ? `In-Kind Offer: ${inkindOffer}` : null
+            ].filter(Boolean).join('\n\n') || null;
+
+            const dbData = {
                 user_id:      this.currentUser.id,
                 user_name:    this.currentUser.name,
                 user_email:   this.currentUser.email,
@@ -4948,33 +4969,33 @@ async updateMission(needId) {
                 headcount:    parseInt(headcount),
                 equipment:    equipment,
                 description:  description,
-                special_needs: special || null,
+                special_needs: specialWithOffer,
                 contact:      contact,
-                contribution: parseInt(contribution),
+                contribution: contribution,
                 status:       'pending',
                 created_at:   new Date().toISOString()
             };
 
             const { data, error } = await supabase
                 .from('space_requests')
-                .insert([requestData])
+                .insert([dbData])
                 .select()
                 .single();
 
             if (error) throw error;
 
-            // Send email notification to admin via EmailJS
-            await this.sendSpaceRequestEmail(requestData);
+            await this.sendSpaceRequestEmail({ ...dbData, contribution_mode: contributionMode, inkind_offer: inkindOffer });
 
             document.getElementById('spaceRequestForm').reset();
-            // Re-set min date after reset
             const dateField = document.getElementById('requestDate');
             if (dateField) dateField.min = new Date().toISOString().split('T')[0];
-            // Re-set contribution slider display
-            document.getElementById('contributionDisplay').textContent = '$25';
-            document.getElementById('contributionLabel').textContent = 'Appreciated';
-            document.getElementById('contributionSlider').value = 25;
-            // Clear tile selections
+            // Reset contribution to financial/$0
+            document.querySelector('input[name="contributionMode"][value="financial"]').checked = true;
+            this.updateContributionMode('financial');
+            const slider = document.getElementById('contributionSlider');
+            if (slider) slider.value = 0;
+            this.updateContributionDisplay();
+            if (document.getElementById('inkindDescription')) document.getElementById('inkindDescription').value = '';
             document.querySelectorAll('.use-type-tile').forEach(t => t.classList.remove('selected'));
 
             this.showAlert('Request submitted! We\'ll be in touch soon.', 'success');
@@ -5013,7 +5034,11 @@ async updateMission(needId) {
                 equipment:       req.equipment,
                 description:     req.description,
                 special_needs:   req.special_needs || 'None',
-                contribution:    '$' + req.contribution
+                contribution:    req.contribution_mode === 'inkind'
+                    ? `In-Kind / Trade: ${req.inkind_offer || 'See special needs'}`
+                    : req.contribution_mode === 'community'
+                        ? "Let's Talk / Open Conversation"
+                        : (req.contribution >= 300 ? '$300+' : `$${req.contribution}`)
             });
 
             console.log('✅ Space request email sent');
@@ -5058,7 +5083,7 @@ async updateMission(needId) {
                         </div>
                         <div class="space-request-badges">
                             <span class="request-badge status-${req.status}">${req.status}</span>
-                            <span class="request-badge">$${req.contribution}</span>
+                            <span class="request-badge">${req.contribution > 0 ? (req.contribution >= 300 ? '$300+' : `$${req.contribution}`) : req.contribution === 0 ? 'Open' : 'In-Kind'}</span>
                         </div>
                     </div>
                     <div class="space-request-details">

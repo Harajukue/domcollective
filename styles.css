@@ -5051,6 +5051,69 @@ body {
     text-align: center;
 }
 
+/* Contribution mode selector */
+.contribution-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+    border: 3px solid #000;
+    margin: 1rem 0 0;
+}
+
+.contribution-mode-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem 1rem;
+    border-right: 2px solid #000;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    position: relative;
+    gap: 0.35rem;
+    user-select: none;
+}
+
+.contribution-mode-tile:last-child { border-right: none; }
+
+.contribution-mode-tile input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.contribution-mode-tile.selected {
+    background: #000;
+    color: #fff;
+}
+
+.contribution-mode-tile:not(.selected):hover { background: #f5f5f5; }
+
+.mode-icon {
+    font-size: 1.3rem;
+    font-weight: 900;
+    line-height: 1;
+}
+
+.mode-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    text-align: center;
+}
+
+.community-rate-note {
+    margin-top: 1.25rem;
+    padding: 1.25rem 1.5rem;
+    border-left: 4px solid #000;
+    background: #f8f8f8;
+    font-size: 0.9rem;
+    line-height: 1.7;
+    color: #444;
+}
+
 /* Contribution Slider */
 .contribution-group {
     background: #f8f8f8;
@@ -5237,6 +5300,19 @@ body {
     font-size: 0.75rem;
     padding: 0.5rem 1rem;
     margin-left: -2px;
+}
+
+@media (max-width: 480px) {
+    .contribution-mode-grid { grid-template-columns: 1fr; }
+    .contribution-mode-tile {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 0.75rem;
+        padding: 1rem 1.25rem;
+        border-right: none;
+        border-bottom: 2px solid #000;
+    }
+    .contribution-mode-tile:last-child { border-bottom: none; }
 }
 
 @media (max-width: 768px) {
