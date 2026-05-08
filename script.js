@@ -4880,6 +4880,14 @@ async updateMission(needId) {
         if (!slider || !display) return;
 
         const val = parseInt(slider.value);
+        const min = parseInt(slider.min || 0);
+        const max = parseInt(slider.max || 300);
+        const pct = (val - min) / (max - min);
+
+        // Position custom thumb: left edge at 0% when min, right edge at 100% when max
+        const thumb = document.getElementById('contributionThumb');
+        if (thumb) thumb.style.left = `calc(${pct * 100}% - ${pct * 24}px)`;
+
         display.textContent = val >= 300 ? '$300+' : `$${val}`;
 
         if (val === 0)       label.textContent = 'Open Conversation';
@@ -4922,6 +4930,9 @@ async updateMission(needId) {
         if (dateField) {
             dateField.min = new Date().toISOString().split('T')[0];
         }
+
+        // Init slider thumb position
+        this.updateContributionDisplay();
 
         // Admin: show all submitted requests
         const adminPanel = document.getElementById('spaceRequestsAdmin');

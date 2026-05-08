@@ -5121,8 +5121,6 @@ body {
 
 .contribution-slider-wrapper {
     margin-top: 1.5rem;
-    overflow: hidden;
-    padding: 12px 0; /* vertical clearance so thumb isn't clipped */
 }
 
 .contribution-display {
@@ -5149,40 +5147,46 @@ body {
     color: #555;
 }
 
-.contribution-slider {
-    -webkit-appearance: none;
-    appearance: none;
-    display: block;
-    width: calc(100% + 24px); /* extend by full thumb width (12px each side) */
-    margin-left: -12px;
-    height: 6px;
-    background: #000;
-    outline: none;
+/* Custom slider — native input is invisible and overlaid for interaction */
+.slider-outer {
+    position: relative;
+    padding: 12px 0;
     cursor: pointer;
-    border-radius: 0;
-    padding: 0;
 }
 
-.contribution-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
+.custom-slider-track {
+    width: 100%;
+    height: 6px;
+    background: #000;
+    position: relative;
+}
+
+.custom-slider-thumb {
+    position: absolute;
     width: 24px;
     height: 24px;
     background: #000;
-    cursor: pointer;
     border: 3px solid #fff;
     box-shadow: 0 0 0 2px #000;
-    border-radius: 0;
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    pointer-events: none;
 }
 
-.contribution-slider::-moz-range-thumb {
-    width: 22px;
-    height: 22px;
-    background: #000;
+.contribution-slider-native {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
     cursor: pointer;
-    border: 3px solid #fff;
-    box-shadow: 0 0 0 2px #000;
-    border-radius: 0;
+    -webkit-appearance: none;
+    appearance: none;
+    z-index: 2;
+    margin: 0;
+    padding: 0;
 }
 
 .contribution-scale {

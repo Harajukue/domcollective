@@ -717,7 +717,12 @@
                                         <span class="contribution-amount" id="contributionDisplay">$0</span>
                                         <span class="contribution-label" id="contributionLabel">Open Conversation</span>
                                     </div>
-                                    <input type="range" id="contributionSlider" min="0" max="300" step="5" value="0" class="contribution-slider" oninput="app.updateContributionDisplay()">
+                                    <div class="slider-outer">
+                                        <div class="custom-slider-track">
+                                            <div class="custom-slider-thumb" id="contributionThumb"></div>
+                                        </div>
+                                        <input type="range" id="contributionSlider" min="0" max="300" step="5" value="0" class="contribution-slider-native" oninput="app.updateContributionDisplay()">
+                                    </div>
                                     <div class="contribution-scale">
                                         <span>$0</span>
                                         <span>$75</span>
