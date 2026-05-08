@@ -5121,6 +5121,8 @@ body {
 
 .contribution-slider-wrapper {
     margin-top: 1.5rem;
+    overflow: hidden;
+    padding: 12px 0; /* vertical clearance so thumb isn't clipped */
 }
 
 .contribution-display {
@@ -5150,7 +5152,9 @@ body {
 .contribution-slider {
     -webkit-appearance: none;
     appearance: none;
-    width: 100%;
+    display: block;
+    width: calc(100% + 24px); /* extend by full thumb width (12px each side) */
+    margin-left: -12px;
     height: 6px;
     background: #000;
     outline: none;
