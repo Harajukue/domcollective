@@ -110,15 +110,18 @@ class CreativeCollective {
     // ====================================
  async init() {
     console.log('Initializing DÅM Collective...');
-    
+
+    // Capture hash before any replaceState calls wipe it
+    const _startHash = window.location.hash;
+
     try {
         console.log('Binding events...');
         this.bindEvents();
         console.log('✓ Events bound');
-        
+
         // Show loading immediately
         this.showLoadingStats();
-        
+
         // Check for Stripe success/cancel in URL
         const urlParams = new URLSearchParams(window.location.search);
         const stripeSuccess = urlParams.get('success');
@@ -167,17 +170,16 @@ class CreativeCollective {
             console.log('✓ Data loading initiated');
 
             // Handle shareable event links: #event=EVENT_ID
-            const hash = window.location.hash;
-            if (hash.startsWith('#event=')) {
-                const eventId = decodeURIComponent(hash.slice(7));
+            if (_startHash.startsWith('#event=')) {
+                const eventId = decodeURIComponent(_startHash.slice(7));
                 try {
                     await Promise.all([this.fetchMonthEvents(), this.loadEventSettings()]);
                     if ((this._lastFetchedEvents || []).find(e => e.id === eventId)) {
                         this.openEventDetail(eventId);
                     }
                 } catch(e) { console.warn('Could not auto-open event from URL', e); }
-            } else if (hash) {
-                const section = hash.slice(1);
+            } else if (_startHash) {
+                const section = _startHash.slice(1);
                 const linkable = ['checkin','directory','needs','calendar','membership','gallery','profile','bookspace','donate','about'];
                 if (linkable.includes(section)) {
                     this.showSection(section);
