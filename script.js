@@ -176,6 +176,12 @@ class CreativeCollective {
                         this.openEventDetail(eventId);
                     }
                 } catch(e) { console.warn('Could not auto-open event from URL', e); }
+            } else if (hash) {
+                const section = hash.slice(1);
+                const linkable = ['checkin','directory','needs','calendar','membership','gallery','profile','bookspace','donate','about'];
+                if (linkable.includes(section)) {
+                    this.showSection(section);
+                }
             }
 
             console.log('=== App initialized successfully ===');
@@ -2440,6 +2446,13 @@ async updateMission(needId) {
             console.log('Section displayed:', sectionName);
         } else {
             console.error('Section not found:', sectionName);
+        }
+
+        // Keep URL in sync so shared links land on the right section
+        if (sectionName === 'home') {
+            window.history.replaceState(null, '', window.location.pathname);
+        } else {
+            window.history.replaceState(null, '', '#' + sectionName);
         }
 
         // Load section-specific content
