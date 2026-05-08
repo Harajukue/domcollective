@@ -45,6 +45,12 @@ var supabase = (function() {
             autoRefreshToken: true,
             detectSessionInUrl: false,
             flowType: 'pkce'
+        },
+        realtime: {
+            params: { eventsPerSecond: 0 }
+        },
+        global: {
+            fetch: (...args) => fetch(...args)
         }
     });
 })();
@@ -187,6 +193,16 @@ class CreativeCollective {
             }
 
             console.log('=== App initialized successfully ===');
+
+            // Keepalive: refresh session every 4 minutes so the Supabase client
+            // stays healthy without relying on the Realtime WebSocket.
+            setInterval(async () => {
+                try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (session) await supabase.auth.refreshSession();
+                } catch (e) { /* non-fatal */ }
+            }, 4 * 60 * 1000);
+
         } catch (error) {
             console.error('=== INITIALIZATION FAILED ===');
             console.error('Error:', error);
