@@ -5055,8 +5055,7 @@ body {
 .contribution-mode-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 0;
-    border: 3px solid #000;
+    gap: 0.5rem;
     margin: 1rem 0 0;
 }
 
@@ -5066,15 +5065,13 @@ body {
     align-items: center;
     justify-content: center;
     padding: 1.25rem 1rem;
-    border-right: 2px solid #000;
+    border: 2px solid #000;
     cursor: pointer;
     transition: background 0.15s ease, color 0.15s ease;
     position: relative;
     gap: 0.35rem;
     user-select: none;
 }
-
-.contribution-mode-tile:last-child { border-right: none; }
 
 .contribution-mode-tile input[type="radio"] {
     position: absolute;
@@ -5123,13 +5120,12 @@ body {
 }
 
 .contribution-slider-wrapper {
-    margin: 1.5rem -2rem 0;
+    margin-top: 1.5rem;
 }
 
 .contribution-display {
     text-align: center;
     margin-bottom: 1.25rem;
-    padding: 0 2rem;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -5160,6 +5156,7 @@ body {
     outline: none;
     cursor: pointer;
     border-radius: 0;
+    padding: 0;
 }
 
 .contribution-slider::-webkit-slider-thumb {
@@ -5191,7 +5188,7 @@ body {
     font-size: 0.75rem;
     color: #777;
     font-weight: 700;
-    padding: 0 2rem;
+    padding: 0 2px;
 }
 
 .bookspace-submit-btn {
@@ -5310,10 +5307,7 @@ body {
         justify-content: flex-start;
         gap: 0.75rem;
         padding: 1rem 1.25rem;
-        border-right: none;
-        border-bottom: 2px solid #000;
     }
-    .contribution-mode-tile:last-child { border-bottom: none; }
 }
 
 @media (max-width: 768px) {
